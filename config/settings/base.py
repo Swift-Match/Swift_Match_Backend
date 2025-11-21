@@ -83,3 +83,41 @@ TEMPLATES = [
         },
     },
 ]
+
+AUTH_USER_MODEL = 'users.User'
+
+REST_FRAMEWORK.update({
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+})
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), # Token expira em 60 min
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),   # Token de refresh dura 1 dia
+    "ROTATE_REFRESH_TOKENS": False,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+}
+
+
+CELERY_BROKER_URL = 'redis://swift_redis:6379/0'
+CELERY_RESULT_BACKEND = 'redis://swift_redis:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'America/Sao_Paulo'
+
+CELERY_BEAT_SCHEDULE = {
+    'update-global-ranking-daily': {
+        # O caminho para a função que criamos
+        'task': 'apps.rankings.tasks.run_global_ranking_calculation', 
+        # Roda todos os dias à meia-noite (00:00)
+        'schedule': crontab(minute=0, hour=0), 
+        'args': (),
+        'options': {'queue': 'default'}
+    },
+}
