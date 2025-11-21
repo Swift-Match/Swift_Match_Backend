@@ -532,3 +532,28 @@ class GroupTrackCompatibilityView(APIView):
             "detailed_comparisons": detailed_comparisons
         }, status=status.HTTP_200_OK)
     
+class GlobalRankingListView(generics.ListAPIView):
+    """
+    Retorna o ranking global de álbuns para todos os países
+    (Dados pré-calculados para o mapa).
+    """
+    queryset = CountryGlobalRanking.objects.all().select_related('consensus_album', 'polarization_album')
+    serializer_class = CountryGlobalRankingSerializer
+    permission_classes = [AllowAny] 
+
+class GroupRankingViewSet(viewsets.ModelViewSet):
+    """Endpoint para adicionar/gerenciar álbuns a serem rankeados pelos grupos."""
+    
+    # Usuário só vê os rankings dos grupos dos quais ele participa
+    queryset = GroupRanking.objects.all() 
+    serializer_class = GroupRankingCreateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        # Filtra GroupRankings para álbuns adicionados aos grupos onde o usuário é membro
+        return GroupRanking.objects.filter(group__members=user).order_by('-id')
+    
+    def perform_create(self, serializer):
+        serializer.save(added_by=self.request.user)
+
