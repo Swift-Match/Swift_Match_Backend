@@ -62,3 +62,41 @@ class GroupDetailView(generics.RetrieveAPIView):
             )
         return obj
 
+class GroupAddMemberView(GenericAPIView):
+    """
+    POST: Adiciona um novo membro ao grupo (requer permissão de administrador).
+    """
+    serializer_class = AddMemberSerializer
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        group = get_object_or_404(Group, pk=pk)
+        current_user_membership = get_object_or_404(
+            GroupMembership, group=group, user=request.user
+        )
+
+        # 1. Checa se o usuário logado é administrador
+        if not current_user_membership.is_admin:
+            return Response(
+                {"error": "Você precisa ser administrador para adicionar membros."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = AddMemberSerializer(data=request.data, context={'group': group})
+        serializer.is_valid(raise_exception=True)
+        
+        user_to_add = serializer.validated_data['user_id']
+        
+        # 2. Adiciona o novo membro
+        GroupMembership.objects.create(
+            group=group,
+            user=user_to_add,
+            is_admin=False # Membro novo não é admin por padrão
+        )
+
+        return Response(
+            {"message": f"Usuário {user_to_add.username} adicionado ao grupo '{group.name}'."},
+            status=status.HTTP_201_CREATED
+        )
+    
+
