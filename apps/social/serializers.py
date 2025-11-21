@@ -105,3 +105,30 @@ class GroupInviteCreateSerializer(serializers.ModelSerializer):
 
         return data
 
+# Adicione este novo serializer
+class GroupInviteDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer para exibir detalhes de um convite (GET). 
+    Inclui detalhes dos usuários e do grupo.
+    """
+    # Se você tem um Serializer público para o CustomUser, use-o.
+    # Se não, substitua UserPublicSerializer por um Serializer simples, 
+    # como serializers.StringRelatedField()
+    sender = UserPublicSerializer(read_only=True)
+    receiver = UserPublicSerializer(read_only=True)
+    
+    # Se você tem um Serializer de Grupo, use-o. Senão, StringRelatedField.
+    group = serializers.StringRelatedField(read_only=True) # Exibir o nome do grupo
+
+    class Meta:
+        model = GroupInvite
+        fields = [
+            'id', 
+            'group', 
+            'receiver', 
+            'sender', 
+            'status', 
+            'created_at'
+        ]
+        read_only_fields = fields
+
