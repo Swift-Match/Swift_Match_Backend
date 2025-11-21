@@ -21,3 +21,18 @@ class GroupSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'owner', 'owner_username', 'created_at', 'members')
         read_only_fields = ('owner',) # O dono será definido automaticamente na View
 
+# --- Serializer para Adicionar Membro (Input) ---
+class AddMemberSerializer(serializers.Serializer):
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), 
+        write_only=True,
+        error_messages={'does_not_exist': 'Usuário com este ID não existe.'}
+    )
+
+    def validate_user_id(self, user):
+        # Evita que o dono do grupo se adicione através deste endpoint se já for membro
+        if GroupMembership.objects.filter(group=self.context['group'], user=user).exists():
+            raise serializers.ValidationError("Este usuário já é membro do grupo.")
+        return user
+    
+
