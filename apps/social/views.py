@@ -131,3 +131,144 @@ class FriendshipRequestListView(generics.ListCreateAPIView):
         # Chama a função de criação herdada do ListCreateAPIView
         return self.create(request, *args, **kwargs)
 
+class EmptySerializer(serializers.Serializer):
+    pass
+
+class FriendshipManageView(APIView):
+    """
+    POST: Aceita ou Rejeita um pedido de amizade recebido.
+    URL: /api/social/friendships/<request_id>/<action>/
+    """
+    serializer_class = EmptyResponseSerializer
+    permission_classes = [IsAuthenticated]
+
+    swagger_fake_method = 'post'
+
+    @swagger_auto_schema(
+        operation_id='social_friendship_manage_action',
+        request_body=EmptyResponseSerializer,
+        responses={200: EmptyResponseSerializer}
+    )
+
+    def post(self, request, pk, action):
+        # Encontra o pedido pelo ID e verifica se ele foi enviado PARA o usuário logado
+        friendship = get_object_or_404(
+            Friendship, 
+            pk=pk, 
+            to_user=request.user, 
+            status='pending'
+        )
+        
+        if action == 'accept':
+            friendship.status = 'accepted'
+            message = f"Pedido de amizade de {friendship.from_user.username} aceito. Vocês agora são amigos!"
+            status_code = status.HTTP_200_OK
+        
+        elif action == 'reject':
+            friendship.status = 'rejected'
+            message = f"Pedido de amizade de {friendship.from_user.username} rejeitado."
+            status_code = status.HTTP_200_OK
+            
+        else:
+            return Response(
+                {"error": "Ação inválida. Use 'accept' ou 'reject'."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        friendship.save()
+        
+        return Response({"message": message}, status=status_code)
+    
+class GroupInviteManageView(APIView):
+    """
+    POST: Aceita ou Rejeita um convite de grupo recebido.
+    URL: /api/social/groups/invites/<invite_id>/<action>/
+    """
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_id='social_group_invite_manage',
+        request_body=None, # Não requer corpo de requisição
+        responses={
+            200: "Mensagem de sucesso (convite aceito/rejeitado).",
+            400: "Ação inválida ou convite não encontrado/expirado."
+        }
+    )
+    def post(self, request, pk, action):
+        # O decorador @transaction.atomic garante que se qualquer etapa falhar, nada é salvo no DB.
+        with transaction.atomic():
+            
+            # 1. Busca e valida o convite
+            try:
+                invite = GroupInvite.objects.get(
+                    pk=pk, 
+                    # Apenas o usuário que recebeu o convite pode gerenciá-lo
+                    receiver=request.user, 
+                    status='PENDING' # Deve estar pendente
+                )
+            except GroupInvite.DoesNotExist:
+                return Response(
+                    {"error": "Convite não encontrado, já foi gerenciado ou você não é o destinatário."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            if action == 'accept':
+                # 2. Adiciona o usuário ao grupo
+                
+                # O GroupMembership é criado automaticamente via M2M, mas 
+                # como você tem um 'through' model (GroupMembership), 
+                # você deve criar a instância 'GroupMembership' explicitamente ou usar add()
+                
+                # Usando add() (método mais simples, garante que não haja duplicidade)
+                invite.group.members.add(request.user) 
+                
+                invite.status = 'ACCEPTED'
+                message = f"Você aceitou o convite e entrou no grupo '{invite.group.name}'!"
+                
+            elif action == 'reject':
+                # 3. Rejeita o convite
+                invite.status = 'REJECTED'
+                message = "Você rejeitou o convite."
+                
+            else:
+                return Response(
+                    {"error": "Ação inválida. Use 'accept' ou 'reject'."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 4. Salva a mudança de status no convite
+            invite.save()
+            
+            return Response({"message": message}, status=status.HTTP_200_OK)
+        
+
+class FriendListView(APIView):
+    """
+    Retorna a lista de todos os amigos (com status 'Aceita') do usuário logado.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        
+        # 1. Busca todas as amizades ativas onde o usuário logado é user_a OU user_b
+        active_friendships = Friendship.objects.filter(
+            Q(user_a=user) | Q(user_b=user), 
+            status=2 # 2 = Amizade Aceita/Confirmada
+        ).select_related('user_a', 'user_b') # Otimiza a busca dos dados do usuário
+        
+        friend_ids = []
+        for friendship in active_friendships:
+            # Adiciona o ID do outro usuário (o amigo)
+            if friendship.user_a.id == user.id:
+                friend_ids.append(friendship.user_b.id)
+            else:
+                friend_ids.append(friendship.user_a.id)
+
+        # 2. Busca os objetos User dos IDs encontrados
+        friends = User.objects.filter(id__in=friend_ids)
+        
+        # 3. Serializa e retorna
+        serializer = FriendSerializer(friends, many=True)
+        
+        return Response(serializer.data, status=status.HTTP_200_OK) 
