@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import Group, GroupMembership, User, Friendship, GroupInvite
-from apps.users.serializers import UserPublicSerializer # Reutiliza o Serializer de User
-
+from apps.users.serializers import UserPublicSerializer 
+from django.db.models import Q
 
 class GroupMemberSerializer(serializers.ModelSerializer):
     # Serializer básico para listar os membros (mostra o username e ID)
@@ -30,7 +30,7 @@ class AddMemberSerializer(serializers.Serializer):
     )
 
     def validate_user_id(self, user):
-        # Evita que o dono do grupo se adicione através deste endpoint se já for membro
+        # CORREÇÃO: 'user=user' em vez de 'member=user'
         if GroupMembership.objects.filter(group=self.context['group'], user=user).exists():
             raise serializers.ValidationError("Este usuário já é membro do grupo.")
         return user
@@ -60,15 +60,14 @@ class FriendshipRequestSerializer(serializers.ModelSerializer):
         # 2. Verifica se o pedido já existe em qualquer direção
         # (A para B) ou (B para A)
         existing_request = Friendship.objects.filter(
-            models.Q(from_user=request_user, to_user=to_user) | 
-            models.Q(from_user=to_user, to_user=request_user)
+            Q(from_user=request_user, to_user=to_user) | 
+            Q(from_user=to_user, to_user=request_user)
         ).first()
 
         if existing_request:
             if existing_request.status == 'accepted':
                 raise serializers.ValidationError("Vocês já são amigos.")
             
-            # Se já existir um pedido pendente (em qualquer direção)
             if existing_request.status == 'pending':
                 if existing_request.from_user == request_user:
                     raise serializers.ValidationError("Você já enviou um pedido para este usuário.")
@@ -95,8 +94,8 @@ class GroupInviteCreateSerializer(serializers.ModelSerializer):
         group = data.get('group')
         receiver = data.get('receiver')
 
-        # 1. Checa se o usuário já é membro do grupo
-        if GroupMembership.objects.filter(group=group, member=receiver).exists():
+        # CORREÇÃO: 'user=receiver' em vez de 'member=receiver'
+        if GroupMembership.objects.filter(group=group, user=receiver).exists():
             raise serializers.ValidationError("Este usuário já é membro deste grupo.")
             
         # 2. Checa se já existe um convite PENDENTE para este usuário/grupo
@@ -111,13 +110,9 @@ class GroupInviteDetailSerializer(serializers.ModelSerializer):
     Serializer para exibir detalhes de um convite (GET). 
     Inclui detalhes dos usuários e do grupo.
     """
-    # Se você tem um Serializer público para o CustomUser, use-o.
-    # Se não, substitua UserPublicSerializer por um Serializer simples, 
-    # como serializers.StringRelatedField()
     sender = UserPublicSerializer(read_only=True)
     receiver = UserPublicSerializer(read_only=True)
     
-    # Se você tem um Serializer de Grupo, use-o. Senão, StringRelatedField.
     group = serializers.StringRelatedField(read_only=True) # Exibir o nome do grupo
 
     class Meta:
