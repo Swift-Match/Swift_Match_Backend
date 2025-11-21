@@ -189,3 +189,173 @@ def calculate_track_compatibility(user_a, user_b, album):
     return round(compatibility_percent, 2), num_shared_tracks, analysis_report
 
 
+def get_album_map():
+    return {album.id: album for album in Album.objects.all()}
+
+def calculate_global_ranking():
+    """
+    Executa o cálculo do ranking de álbuns para todos os países
+    onde há pelo menos 2 usuários ativos.
+    """
+    print("--- INICIANDO CÁLCULO GLOBAL DE RANKING ---")
+    
+    # 1. Agrupar usuários por país e contar quantos há em cada país
+    # Filtrar apenas países com pelo menos 2 usuários com ranking submetido
+    countries_data = User.objects.filter(
+        # Certifica-se que o usuário rankeou algo
+        albumranking__isnull=False,
+        # Você pode querer adicionar um filtro de 'is_active' se tiver
+    ).values('country').annotate(
+        user_count=Count('id', distinct=True)
+    ).filter(user_count__gte=2) # Pelo menos 2 usuários para análise
+
+    album_map = get_album_map()
+
+    track_map = {track.id: track for track in Track.objects.all()}
+
+    for country_info in countries_data:
+        country = country_info['country']
+        user_count = country_info['user_count']
+        
+        # 2. Encontrar todos os rankings de álbuns para este país
+        country_user_ids = User.objects.filter(country=country).values_list('id', flat=True)
+
+        # Agregação de todos os rankings de álbuns dos usuários do país
+        album_stats = AlbumRanking.objects.filter(
+            user_id__in=country_user_ids
+        ).values('album_id').annotate(
+            avg_position=Avg('position'),
+            # Desvio padrão para medir a polarização (StdDev requer PostgreSQL, senão use estatísticas em Python)
+            # Se você usa PostgreSQL:
+            # std_dev_position=StdDev('position'),
+            
+            # Se não usa PostgreSQL (fallback em Python):
+            count=Count('position')
+            
+        ).order_by('avg_position') # O menor AVG é o álbum mais votado
+
+        # 3. Processamento para Polarização (Se não usar StdDev do ORM)
+        full_positions = defaultdict(list)
+        for ranking in AlbumRanking.objects.filter(user_id__in=country_user_ids):
+             full_positions[ranking.album_id].append(ranking.position)
+
+        # 4. Compilar Análise Detalhada
+        analysis_data = {}
+        
+        for stats in album_stats:
+            album_id = stats['album_id']
+            positions = full_positions[album_id]
+            
+            if len(positions) > 1:
+                # Calcula Desvio Padrão usando a biblioteca Python (para compatibilidade)
+                std_dev = statistics.stdev(positions)
+            else:
+                std_dev = 0
+                
+            analysis_data[album_id] = {
+                "album_title": album_map.get(album_id).title,
+                "avg_rank": round(stats['avg_position'], 2),
+                "std_dev_rank": round(std_dev, 2), # Polarização!
+                "votes": stats['count'] 
+            }
+
+        # 5. Encontrar os Extremos Nacionais
+        
+        # Consenso (Menor Média)
+        consensus_album_id = min(analysis_data, key=lambda k: analysis_data[k]['avg_rank']) if analysis_data else None
+        
+        # Polarização (Maior Desvio Padrão)
+        polarization_album_id = max(analysis_data, key=lambda k: analysis_data[k]['std_dev_rank']) if analysis_data else None
+        
+        # 6. Salvar ou Atualizar o Model Global
+        ranking_obj, created = CountryGlobalRanking.objects.update_or_create(
+            country_name=country,
+            defaults={
+                'user_count': user_count,
+                'consensus_album': album_map.get(consensus_album_id),
+                'polarization_album': album_map.get(polarization_album_id),
+                'analysis_data': analysis_data
+            }
+        )
+        print(f"✅ Ranking de {country} {'criado' if created else 'atualizado'}. Usuários: {user_count}")
+
+        # 7. ANÁLISE DE MÚSICAS POR PAÍS
+        
+        # 7.1. Busca de Posições (Otimizada para o país atual)
+        member_track_rankings = TrackRanking.objects.filter(
+            user_id__in=country_user_ids
+        ).select_related('track')
+        
+        track_positions = defaultdict(list)
+        for ranking in member_track_rankings:
+            # Garante que o track_id está correto e agrupado pelo país
+            track_positions[ranking.track_id].append(ranking.position)
+
+        # 7.2. Cálculo de Média e Desvio Padrão por Música
+        
+        global_consensus_track_id = None
+        min_global_avg = float('inf')
+        
+        track_analysis_by_album = defaultdict(lambda: {"top_track_id": None, "tracks": {}})
+        polarization_track_id_by_album = {}
+
+        for track_id, positions in track_positions.items():
+            if not track_map.get(track_id): continue # Ignora se a track não foi encontrada
+            
+            avg_position = statistics.mean(positions)
+            votes = len(positions)
+            
+            try:
+                std_dev = statistics.stdev(positions)
+            except statistics.StatisticsError:
+                std_dev = 0
+                
+            analysis = {
+                "track_title": track_map[track_id].title,
+                "album_id": track_map[track_id].album_id,
+                "avg_rank": round(avg_position, 2),
+                "std_dev_rank": round(std_dev, 2), 
+                "votes": votes
+            }
+
+            # 7.3. Determinar Consenso Global (Música favorita de TODOS os álbuns)
+            if avg_position < min_global_avg:
+                min_global_avg = avg_position # Corrigi a variável
+                global_consensus_track_id = track_id
+
+            # 7.4. Determinar Consenso e Polarização POR ÁLBUM
+            album_id = analysis['album_id']
+            track_analysis_by_album[album_id]["tracks"][track_id] = analysis
+            
+            # Consenso por Álbum
+            if (track_analysis_by_album[album_id]["top_track_id"] is None or 
+                analysis['avg_rank'] < track_analysis_by_album[album_id]["tracks"][track_analysis_by_album[album_id]["top_track_id"]]['avg_rank']):
+                
+                track_analysis_by_album[album_id]["top_track_id"] = track_id
+                
+            # Polarização por Álbum (Maior Desvio Padrão)
+            current_polarized_track_id = polarization_track_id_by_album.get(album_id)
+            if (current_polarized_track_id is None or 
+                analysis['std_dev_rank'] > track_analysis_by_album[album_id]["tracks"][current_polarized_track_id]['std_dev_rank']):
+                
+                polarization_track_id_by_album[album_id] = track_id
+
+        # 8. ATUALIZAR MODEL GLOBAL COM DADOS DE TRACKS
+        
+        # O objeto 'ranking_obj' já está definido no passo 6 (álbuns), mas para garantir
+        # a atomicidade (e evitar dois saves), você pode fazer a atualização no final.
+        # Vamos usar o 'ranking_obj' que já foi criado/atualizado na fase 1.
+        
+        # Adiciona a análise de tracks ao JSON existente
+        ranking_obj.analysis_data['track_analysis_by_album'] = dict(track_analysis_by_album)
+        ranking_obj.analysis_data['track_polarization_by_album'] = polarization_track_id_by_album
+        
+        # Define o campo Foreign Key
+        ranking_obj.global_consensus_track_id = global_consensus_track_id
+        
+        ranking_obj.save()
+
+        print(f"✅ Ranking de {country} atualizado (Álbuns e Tracks).")
+
+    print("--- CÁLCULO GLOBAL FINALIZADO ---")
+
