@@ -132,3 +132,8 @@ class GroupInviteDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+class FriendSerializer(serializers.ModelSerializer):
+    """Serializer simples para exibir informações básicas do amigo."""
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'email', 'country')
