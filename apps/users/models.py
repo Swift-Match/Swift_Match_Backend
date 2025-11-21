@@ -33,4 +33,7 @@ class User(AbstractUser):
         verbose_name="Tema do Álbum"
     )
 
-   
+    class Meta:
+        verbose_name = "Usuário"
+        verbose_name_plural = "Usuários"
+        
