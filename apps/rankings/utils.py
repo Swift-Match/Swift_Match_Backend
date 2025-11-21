@@ -359,3 +359,98 @@ def calculate_global_ranking():
 
     print("--- CÁLCULO GLOBAL FINALIZADO ---")
 
+def get_group_preference_vector(group):
+    """Calcula o vetor de preferência (ranking médio) para um grupo."""
+    
+    member_ids = group.members.values_list('id', flat=True)
+    
+    group_rankings = UserRanking.objects.filter(
+        user_id__in=member_ids
+    ).values('track').annotate(
+        avg_ranking=Avg('ranking')
+    )
+    
+    # Retorna {track_id: ranking_medio}
+    return {
+        ranking['track']: ranking['avg_ranking']
+        for ranking in group_rankings
+    }
+
+def calculate_group_internal_coherence(group) -> float:
+    """
+    Calcula a Taxa de Compatibilidade Interna Geral do Grupo (CIGG)
+    com base na média da similaridade dos rankings de todos os membros
+    para os álbuns que o grupo 'matchou'.
+    """
+    
+    # 1. Encontrar os Álbuns Matchados pelo Grupo
+    # Substitua 'GroupAlbumMatch' pelo nome real do seu modelo de match de álbum
+    try:
+        matched_album_ids = GroupRanking.objects.filter(
+            group=group
+        ).values_list('album_id', flat=True)
+    except NameError:
+         # Se GroupAlbumMatch não existe, assumimos que a lista de IDs de álbum é passada
+         # Para este exemplo, vamos simular que não há álbuns matchados.
+         return 0.0
+         
+    if not matched_album_ids:
+        return 0.0
+
+    member_ids = group.members.values_list('id', flat=True)
+    if len(member_ids) < 2:
+        return 0.0 # Coerência de grupo não se aplica a 0 ou 1 pessoa.
+
+    # 2. Obter Rankings de todos os Membros para esses Álbuns
+    # Assumindo que UserRanking armazena o ranking de um Álbum/Track
+    all_rankings = UserRanking.objects.filter(
+        user_id__in=member_ids,
+        album_id__in=matched_album_ids 
+        # ATENÇÃO: Se UserRanking é para Track, use Track em vez de Album
+    ).values('user', 'album', 'ranking')
+    
+    # Organiza os rankings por álbum e usuário
+    rankings_by_album = {}
+    for r in all_rankings:
+        album_id = r['album']
+        user_id = r['user']
+        ranking = r['ranking']
+        
+        if album_id not in rankings_by_album:
+            rankings_by_album[album_id] = {}
+        
+        rankings_by_album[album_id][user_id] = ranking
+
+    total_coherence_score = 0
+    total_comparisons = 0
+    MAX_DIFFERENCE = 5  # Diferença máxima entre rankings (ex: 5 - 0)
+
+    # 3. Calcular a Coerência Média (Comparação par a par)
+    
+    for album_id, user_rankings in rankings_by_album.items():
+        # Obtém a lista de rankings para o álbum, apenas de quem votou
+        ranked_users = list(user_rankings.keys())
+        
+        # Compara cada par de usuários que ranquearam o álbum
+        for i in range(len(ranked_users)):
+            for j in range(i + 1, len(ranked_users)):
+                user1_ranking = user_rankings[ranked_users[i]]
+                user2_ranking = user_rankings[ranked_users[j]]
+                
+                # Diferença de Ranking (0 a 5)
+                difference = abs(user1_ranking - user2_ranking)
+                
+                # Converte Incompatibilidade para Similaridade (0.0 a 1.0)
+                similarity = 1.0 - (difference / MAX_DIFFERENCE)
+                
+                total_coherence_score += similarity
+                total_comparisons += 1
+
+    if total_comparisons == 0:
+        return 0.0
+        
+    # CIGG é a média de similaridade de todos os pares em todos os álbuns
+    cigg_ratio = total_coherence_score / total_comparisons
+    
+    # Retorna porcentagem (0.0 a 100.0)
+    return cigg_ratio * 100
