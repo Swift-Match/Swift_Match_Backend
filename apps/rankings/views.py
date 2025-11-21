@@ -326,3 +326,209 @@ class CompatibilityView(APIView):
         "matching_analysis": analysis_report # 🌟 Dados adicionais aqui
     }, status=status.HTTP_200_OK)
 
+class TrackCompatibilityView(APIView):
+    """
+    Calcula a compatibilidade de ranking de MÚSICAS de um álbum específico
+    entre o usuário logado e outro usuário.
+    Requer que os dois usuários sejam AMIGOS.
+    """
+    permission_classes = [IsAuthenticated]
+
+    serializer_class = EmptyResponseSerializer
+
+    def get(self, request, target_user_id, album_id):
+        user_a = request.user
+        
+        try:
+            user_b = User.objects.get(pk=target_user_id)
+            album = Album.objects.get(pk=album_id)
+        except User.DoesNotExist:
+            return Response({"error": "Usuário alvo não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        except Album.DoesNotExist:
+            return Response({"error": "Álbum não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        # CHECAGEM DE AMIZADE
+        if not check_friendship(user_a, user_b):
+            return Response(
+                {"error": f"Você não pode comparar rankings de músicas com {user_b.username}. É necessário ser amigo."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # CHECAGEM DE COBERTURA DE RANKING (MÚSICAS DO ÁLBUM)
+        # Checa se eles rankearam QUALQUER música DENTRO DESTE ÁLBUM.
+        user_a_has_rankings = TrackRanking.objects.filter(user=user_a, track__album=album).exists()
+        user_b_has_rankings = TrackRanking.objects.filter(user=user_b, track__album=album).exists()
+
+        if not user_a_has_rankings or not user_b_has_rankings:
+            missing_user = []
+            if not user_a_has_rankings:
+                missing_user.append(user_a.username)
+            if not user_b_has_rankings:
+                missing_user.append(user_b.username)
+
+            return Response(
+                {"error": f"Não é possível comparar. O(s) usuário(s) {', '.join(missing_user)} ainda não submeteram seu ranking de músicas para o álbum '{album.title}'."},
+                status=status.HTTP_400_BAD_REQUEST 
+            )
+
+        compatibility_percent, num_shared_tracks, analysis_report = calculate_track_compatibility(user_a, user_b, album)
+
+        if num_shared_tracks == 0:
+             return Response(
+                {"compatibility_percent": 0, "message": f"Nenhuma música do álbum '{album.title}' rankeada por ambos."}, 
+                status=status.HTTP_200_OK
+            )
+            
+        return Response({
+            "target_user": user_b.username,
+            "album_title": album.title,
+            "shared_tracks_count": num_shared_tracks,
+            "compatibility_percent": compatibility_percent,
+            "matching_analysis": analysis_report 
+        }, status=status.HTTP_200_OK)
+
+class GroupTrackCompatibilityView(APIView):
+    """
+    Calcula a compatibilidade média de MÚSICAS de um álbum em um grupo,
+    identificando a música do Consenso, Discórdia e Polarização.
+    """
+    permission_classes = [IsAuthenticated]
+
+    serializer_class = EmptyResponseSerializer
+
+    def get(self, request, group_id, album_id):
+        group = get_object_or_404(Group, pk=group_id)
+        album = get_object_or_404(Album, pk=album_id)
+
+        # 1. Verifica se o usuário logado é membro do grupo
+        if not group.members.filter(pk=request.user.id).exists():
+            return Response(
+                {"error": "Você não é membro deste grupo."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        members = list(group.members.all())
+        num_members = len(members)
+
+        if num_members < 2:
+            return Response(
+                {"compatibility_percent": 0, "message": "O grupo precisa de pelo menos 2 membros para comparação."}, 
+                status=status.HTTP_200_OK
+            )
+
+        member_ids = {member.id for member in members}
+        
+        # Filtra TrackRanking apenas para os membros do grupo e para as músicas do álbum
+        users_with_track_ranking_ids = set(
+             TrackRanking.objects.filter(
+                user__in=member_ids, 
+                track__album=album
+            ).values_list('user_id', flat=True).distinct()
+        )
+
+        if len(users_with_track_ranking_ids) < num_members:
+            non_ranking_ids = member_ids - users_with_track_ranking_ids
+            # OBS: Você precisa garantir que 'User' esteja importado
+            non_ranking_members = User.objects.filter(id__in=non_ranking_ids)
+            non_ranking_usernames = [u.username for u in non_ranking_members]
+
+            return Response(
+                {"error": f"Não é possível calcular a compatibilidade de músicas para '{album.title}'. Os seguintes membros ainda não submeteram seu ranking para este álbum: {', '.join(non_ranking_usernames)}."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 2. Coletar posições de ranking de TODAS as músicas do álbum, de TODOS os membros
+        track_positions = defaultdict(list)
+        
+        # Filtra o TrackRanking apenas para os membros do grupo e para as músicas do álbum
+        member_track_rankings = TrackRanking.objects.filter(
+            user__in=members, 
+            track__album=album
+        ).select_related('track')
+        
+        # Agrupa as posições por ID da música
+        for ranking in member_track_rankings:
+            track_positions[ranking.track.id].append(ranking.position)
+
+        # 3. Calcular compatibilidade e análise de pares (para detalhamento)
+        total_compatibility = 0
+        pair_comparisons = 0
+        detailed_comparisons = []
+        best_match_pair = {"percent": -1, "users": None}
+        worst_match_pair = {"percent": 101, "users": None}
+
+        for user_a, user_b in combinations(members, 2):
+            # Usamos a função utilitária de músicas, passando o álbum
+            compatibility, shared_tracks, analysis_report = calculate_track_compatibility(user_a, user_b, album)
+            
+            total_compatibility += compatibility
+            pair_comparisons += 1
+            
+            # Atualiza o melhor/pior par
+            if compatibility > best_match_pair["percent"]:
+                best_match_pair = {"percent": compatibility, "users": (user_a.username, user_b.username)}
+            if compatibility < worst_match_pair["percent"]:
+                worst_match_pair = {"percent": compatibility, "users": (user_a.username, user_b.username)}
+            
+            detailed_comparisons.append({
+                "user_a": user_a.username,
+                "user_b": user_b.username,
+                "percent": compatibility,
+                "shared_tracks": shared_tracks,
+                "duo_analysis": analysis_report
+            })
+
+        if pair_comparisons == 0:
+             return Response(
+                {"compatibility_percent": 0, "message": f"Nenhum membro rankeou músicas em comum no álbum '{album.title}'."}, 
+                status=status.HTTP_200_OK
+            )
+
+        # 4. Análise Coletiva (Consenso, Discórdia, Polarização)
+        group_track_analysis = {}
+        for track_id, positions in track_positions.items():
+            if len(positions) > 1: # Pelo menos 2 pessoas rankearam a música
+                avg_position = statistics.mean(positions)
+                
+                try:
+                    std_dev = statistics.stdev(positions) # Desvio Padrão
+                except statistics.StatisticsError:
+                    std_dev = 0 
+                
+                group_track_analysis[track_id] = {
+                    "avg_position": round(avg_position, 2),
+                    "std_dev": round(std_dev, 2)
+                }
+        
+        # 5. Identificação dos Extremos
+        
+        # Consenso (Menor Média de Posição)
+        consensus_track_id = min(group_track_analysis, key=lambda id: group_track_analysis[id]["avg_position"], default=None)
+        
+        # Discórdia (Maior Média de Posição)
+        discord_track_id = max(group_track_analysis, key=lambda id: group_track_analysis[id]["avg_position"], default=None)
+
+        # Polarização (Maior Desvio Padrão)
+        polarization_track_id = max(group_track_analysis, key=lambda id: group_track_analysis[id]["std_dev"], default=None)
+
+
+        group_compatibility = round(total_compatibility / pair_comparisons, 2)
+        
+        # 6. Resposta Final
+        return Response({
+            "group_name": group.name,
+            "album_title": album.title,
+            "group_compatibility_percent": group_compatibility,
+            
+            "collective_analysis": {
+                "consensus_track_id": consensus_track_id,
+                "discord_track_id": discord_track_id,
+                "polarization_track_id": polarization_track_id,
+                "best_matching_pair": best_match_pair,
+                "worst_matching_pair": worst_match_pair,
+                "full_group_ranking_data": group_track_analysis
+            },
+            
+            "detailed_comparisons": detailed_comparisons
+        }, status=status.HTTP_200_OK)
+    
