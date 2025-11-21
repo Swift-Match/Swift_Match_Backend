@@ -32,3 +32,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         )
         return user
     
+    def get_friends_count(self, obj) -> int:
+        # Contagem de amizades aceitas (onde o usuário é from_user OU to_user)
+        return Friendship.objects.filter(
+            Q(from_user=obj) | Q(to_user=obj),
+            status='accepted'
+        ).count()
