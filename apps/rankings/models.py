@@ -131,3 +131,43 @@ class CountryGlobalRanking(models.Model):
     def __str__(self):
         return f"Ranking de Álbuns: {self.country_name}"
     
+class GroupRanking(models.Model):
+    """Representa um álbum que foi adicionado a um grupo para fins de matching."""
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='rankings_to_complete')
+    album = models.ForeignKey(Album, on_delete=models.CASCADE)
+    added_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    is_active = models.BooleanField(default=True) # Pode ser desativado
+    
+    class Meta:
+        unique_together = ('group', 'album') # Um álbum só pode ser adicionado ao grupo uma vez
+        verbose_name = 'Ranking de Grupo'
+        
+    def __str__(self):
+        return f"{self.album.title} em {self.group.name}"
+    
+class UserRanking(models.Model):
+    """A submissão de ranking individual de um usuário para um GroupRanking específico."""
+    # Agora se relaciona com GroupRanking, não apenas Album
+    group_ranking = models.ForeignKey(GroupRanking, on_delete=models.CASCADE, related_name='submissions')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='group_submissions')
+    is_complete = models.BooleanField(default=True) # Marca que o ranking foi enviado
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        # Um usuário só pode submeter um ranking para um GroupRanking específico uma vez
+        unique_together = ('group_ranking', 'user') 
+        verbose_name = 'Submissão de Ranking Individual'
+
+    def __str__(self):
+        return f"{self.user.username} submeteu {self.group_ranking.album.title}"
+
+# O modelo RankedTrack permanece o mesmo, mas agora aponta para o novo UserRanking
+class RankedTrack(models.Model):
+    """Representa uma track dentro da submissão do usuário."""
+    user_ranking = models.ForeignKey(UserRanking, on_delete=models.CASCADE, related_name='ranked_tracks')
+    track = models.ForeignKey(Track, on_delete=models.CASCADE)
+    position = models.PositiveIntegerField()
+    
+    class Meta:
+        ordering = ['position']
+    
