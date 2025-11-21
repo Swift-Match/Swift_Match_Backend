@@ -244,26 +244,28 @@ class GroupInviteManageView(APIView):
 
 class FriendListView(APIView):
     """
-    Retorna a lista de todos os amigos (com status 'Aceita') do usuário logado.
+    Retorna a lista de todos os amigos (com status 'accepted') do usuário logado.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
         
-        # 1. Busca todas as amizades ativas onde o usuário logado é user_a OU user_b
+        # 1. Busca amizades ativas onde o usuário logado é from_user OU to_user
+        # O status deve ser a string 'accepted', não o inteiro 2.
         active_friendships = Friendship.objects.filter(
-            Q(user_a=user) | Q(user_b=user), 
-            status=2 # 2 = Amizade Aceita/Confirmada
-        ).select_related('user_a', 'user_b') # Otimiza a busca dos dados do usuário
+            Q(from_user=user) | Q(to_user=user), 
+            status='accepted' # CORREÇÃO: Usar a string literal 'accepted'
+        ).select_related('from_user', 'to_user') # CORREÇÃO: Usar from_user e to_user
         
         friend_ids = []
         for friendship in active_friendships:
             # Adiciona o ID do outro usuário (o amigo)
-            if friendship.user_a.id == user.id:
-                friend_ids.append(friendship.user_b.id)
+            # CORREÇÃO: Checar from_user e to_user
+            if friendship.from_user.id == user.id:
+                friend_ids.append(friendship.to_user.id)
             else:
-                friend_ids.append(friendship.user_a.id)
+                friend_ids.append(friendship.from_user.id)
 
         # 2. Busca os objetos User dos IDs encontrados
         friends = User.objects.filter(id__in=friend_ids)
@@ -271,4 +273,4 @@ class FriendListView(APIView):
         # 3. Serializa e retorna
         serializer = FriendSerializer(friends, many=True)
         
-        return Response(serializer.data, status=status.HTTP_200_OK) 
+        return Response(serializer.data, status=status.HTTP_200_OK)
