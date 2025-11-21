@@ -8,9 +8,12 @@ COPY ./requirements /app/requirements
 RUN pip install --upgrade pip && \
     pip install -r requirements/dev.txt
 
-COPY . /app
+RUN apt-get update && apt-get install -y wget && \
+    wget -O /usr/local/bin/wait-for-it.sh https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh && \
+    chmod +x /usr/local/bin/wait-for-it.sh && \
+    apt-get autoremove -y wget && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY ./entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+COPY . /app
 
 ENTRYPOINT ["/app/entrypoint.sh"]
