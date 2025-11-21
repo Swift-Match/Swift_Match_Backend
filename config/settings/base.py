@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from datetime import timedelta
+from celery.schedules import crontab
 
 load_dotenv()
 
@@ -22,6 +24,12 @@ INSTALLED_APPS = [
     "drf_yasg",
     "drf_spectacular",
     "infrastructure.rest",
+    "apps.users.apps.UsersConfig",
+    "apps.albums.apps.AlbumsConfig",
+    "apps.tracks.apps.TracksConfig",
+    "apps.rankings.apps.RankingsConfig",
+    "apps.social.apps.SocialConfig",
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [
