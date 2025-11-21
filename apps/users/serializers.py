@@ -44,3 +44,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return GroupMembership.objects.filter(user=obj).count()
     
 
+class UserPublicSerializer(serializers.ModelSerializer):
+    """
+    Serializer básico para retornar apenas informações públicas de um usuário.
+    """
+    class Meta:
+        model = User
+        # Inclua apenas campos não-sensíveis que você precisa para exibir 
+        # o remetente/destinatário do convite.
+        fields = ['id', 'username', 'first_name', 'last_name', 'profile_picture_url'] 
+        # Ajuste os campos conforme seu modelo CustomUser
