@@ -38,3 +38,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             Q(from_user=obj) | Q(to_user=obj),
             status='accepted'
         ).count()
+
+    def get_groups_count(self, obj) -> int:
+        # Contagem de grupos onde o usuário é membro
+        return GroupMembership.objects.filter(user=obj).count()
+    
+
