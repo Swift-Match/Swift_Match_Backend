@@ -26,4 +26,11 @@ class User(AbstractUser):
         ("SHOWGIRL", "The Life of a Showgirl")
     )
     
-  
+    tema = models.CharField(
+        max_length=20,
+        choices=TEMA_CHOICES,
+        default="MIDNIGHTS",
+        verbose_name="Tema do Álbum"
+    )
+
+   
