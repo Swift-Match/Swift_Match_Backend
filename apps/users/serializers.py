@@ -1,0 +1,34 @@
+from rest_framework import serializers
+from .models import User
+from apps.social.models import Friendship, GroupMembership 
+from django.db.models import Q
+
+class UserRegistrationSerializer(serializers.ModelSerializer):
+    # O campo password precisa ser write_only para não aparecer na resposta
+    password = serializers.CharField(write_only=True)
+    friends_count = serializers.SerializerMethodField()
+    groups_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = (
+            'username', 
+            'first_name', 
+            'email', 
+            'password', 
+            'country', 
+            'friends_count',  
+            'groups_count',   
+        )
+
+    def create(self, validated_data):
+        # Sobrescreve o método create para usar 'create_user' 
+        # e garantir que a senha seja salva como hash (segurança!)
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+            first_name=validated_data.get('first_name', '')
+        )
+        return user
+    
