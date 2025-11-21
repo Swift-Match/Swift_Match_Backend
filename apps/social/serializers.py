@@ -77,3 +77,31 @@ class FriendshipRequestSerializer(serializers.ModelSerializer):
 
         return data
     
+class GroupInviteCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer para criar um novo GroupInvite. 
+    Permite enviar um convite para um usuário (receiver) em um grupo (group).
+    """
+    # Usamos o ID do usuário/grupo, não o objeto completo, para a criação
+    sender = serializers.PrimaryKeyRelatedField(read_only=True) 
+    
+    class Meta:
+        model = GroupInvite
+        fields = ['id', 'group', 'receiver', 'sender', 'status', 'created_at']
+        read_only_fields = ['id', 'status', 'created_at', 'sender'] # 'sender' será preenchido na view
+
+    # Adicione validação, se necessário (ex: verificar se o receiver já está no grupo)
+    def validate(self, data):
+        group = data.get('group')
+        receiver = data.get('receiver')
+
+        # 1. Checa se o usuário já é membro do grupo
+        if GroupMembership.objects.filter(group=group, member=receiver).exists():
+            raise serializers.ValidationError("Este usuário já é membro deste grupo.")
+            
+        # 2. Checa se já existe um convite PENDENTE para este usuário/grupo
+        if GroupInvite.objects.filter(group=group, receiver=receiver, status='PENDING').exists():
+            raise serializers.ValidationError("Já existe um convite pendente para este usuário neste grupo.")
+
+        return data
+
