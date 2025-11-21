@@ -24,3 +24,15 @@ class RegisterUserView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 
+class UserProfileView(generics.RetrieveAPIView):
+    """
+    Retorna os detalhes do perfil do usuário logado, incluindo contagens sociais.
+    """
+    serializer_class = UserRegistrationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+def healthcheck(request):
+    return JsonResponse({"status": "ok"})
