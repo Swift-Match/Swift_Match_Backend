@@ -128,3 +128,47 @@ class CountryGlobalRankingSerializer(serializers.ModelSerializer):
         read_only_fields = fields # É apenas para leitura
 
 
+class RankedTrackSerializer(serializers.ModelSerializer):
+    """Serializer para receber e exibir a posição de uma track."""
+    track_id = serializers.PrimaryKeyRelatedField(
+        queryset=Track.objects.all(), 
+        source='track' # Mapeia 'track_id' para o campo 'track' no modelo
+    )
+    title = serializers.CharField(source='track.title', read_only=True)
+
+    class Meta:
+        model = RankedTrack
+        fields = ('track_id', 'position', 'title')
+        # 'user_ranking' será gerenciado pelo serializer pai
+        
+class UserRankingCreateSerializer(serializers.ModelSerializer):
+    """Serializer para a submissão de um novo ranking."""
+    # Espera uma lista de tracks rankeadas
+    ranked_tracks = RankedTrackSerializer(many=True) 
+
+    class Meta:
+        model = UserRanking
+        fields = ('album', 'ranked_tracks')
+        read_only_fields = ('user',)
+
+    def create(self, validated_data):
+        # 1. Extrair a lista de tracks e posições
+        ranked_tracks_data = validated_data.pop('ranked_tracks')
+        
+        # 2. Criar o objeto UserRanking principal
+        # O self.context['request'].user é passado da View
+        user_ranking = UserRanking.objects.create(
+            user=self.context['request'].user, 
+            **validated_data
+        )
+
+        # 3. Criar os objetos RankedTrack aninhados
+        ranked_track_objects = [
+            RankedTrack(user_ranking=user_ranking, **item)
+            for item in ranked_tracks_data
+        ]
+        RankedTrack.objects.bulk_create(ranked_track_objects)
+        
+        return user_ranking
+    
+
