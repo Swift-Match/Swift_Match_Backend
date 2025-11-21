@@ -1,0 +1,6 @@
+-r base.txt
+pytest
+pytest-django
+drf-spectacular
+drf-spectacular-sidecar
+djangorestframework-simplejwt

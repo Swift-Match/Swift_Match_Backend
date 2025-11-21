@@ -1,0 +1,91 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15
+    container_name: swift_db
+    restart: always
+    environment:
+      POSTGRES_DB: swift_match_db
+      POSTGRES_USER: swift_admin
+      POSTGRES_PASSWORD: swift_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: swift_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@swift.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+
+  # Broker para Celery
+  redis:
+    image: redis:7-alpine
+    container_name: swift_redis
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data 
+
+  web:
+    build: .
+    container_name: swift_backend
+    # 🌟 Usa o ENTRYPOINT para esperar o DB e, em seguida, executa o script de inicialização do web.
+    entrypoint: /app/entrypoint.sh
+    command: /app/run_web.sh 
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+
+  celery_worker: 
+    build: .
+    container_name: swift_celery_worker
+    # 🌟 Usa o ENTRYPOINT para esperar o DB e, em seguida, executa o comando Celery.
+    entrypoint: /app/entrypoint.sh
+    command: celery -A config worker -l info 
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+      - web
+    environment:
+      # Use o caminho de importação correto para o arquivo de settings.
+      # Se as configurações estão em 'config/settings/base.py':
+      - DJANGO_SETTINGS_MODULE=config.settings.base
+    
+
+  celery_beat: 
+    build: .
+    container_name: swift_celery_beat
+    entrypoint: /app/entrypoint.sh
+    command: >
+      bash -c "while ! python manage.py showmigrations django_celery_beat | grep '\[X\]'; do 
+                 echo 'Aguardando migração do django_celery_beat...'; 
+                 sleep 2; 
+               done; 
+               celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+      - web 
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.base
+
+volumes:
+  postgres_data:
+  redis_data: 
