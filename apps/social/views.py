@@ -43,3 +43,22 @@ class GroupListCreateView(generics.ListCreateAPIView):
             is_admin=True
         )
 
+class GroupDetailView(generics.RetrieveAPIView):
+    """
+    GET: Detalhes de um grupo específico.
+    """
+    queryset = Group.objects.all()
+    serializer_class = GroupSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_object(self):
+        obj = super().get_object()
+        # Garante que apenas membros do grupo possam ver os detalhes
+        if not obj.members.filter(pk=self.request.user.id).exists():
+            self.permission_denied(
+                self.request, 
+                message="Você não tem permissão para visualizar este grupo."
+            )
+        return obj
+
