@@ -100,3 +100,34 @@ class GroupAddMemberView(GenericAPIView):
         )
     
 
+class FriendshipRequestListView(generics.ListCreateAPIView):
+    """
+    GET: Lista todos os pedidos de amizade PENDENTES recebidos pelo usuário logado.
+    POST: Envia um novo pedido de amizade para outro usuário.
+    """
+    serializer_class = FriendshipRequestSerializer
+    permission_classes = [IsAuthenticated]
+
+    swagger_fake_method = 'post'
+
+    def get_queryset(self):
+        # Lista pedidos pendentes que o usuário logado recebeu
+        return Friendship.objects.filter(
+            to_user=self.request.user, 
+            status='pending'
+        ).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        # Define o usuário logado como o remetente
+        serializer.save(from_user=self.request.user, status='pending')
+
+    @swagger_auto_schema(
+        operation_id='social_friendship_request_create', 
+        request_body=FriendshipRequestSerializer, 
+        responses={201: EmptyResponseSerializer} 
+    )
+
+    def post(self, request, *args, **kwargs):
+        # Chama a função de criação herdada do ListCreateAPIView
+        return self.create(request, *args, **kwargs)
+
