@@ -1,6 +1,12 @@
 from django.contrib import admin
 from django.urls import path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+from apps.users.views import healthcheck 
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView # Necessário para o login JWT
 
 urlpatterns = [
     path('admin/', admin.site.urls),
