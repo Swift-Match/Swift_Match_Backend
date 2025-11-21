@@ -172,3 +172,33 @@ class UserRankingCreateSerializer(serializers.ModelSerializer):
         return user_ranking
     
 
+class GroupRankingCreateSerializer(serializers.ModelSerializer):
+    """Serializer para adicionar um Album a um Grupo."""
+    
+    class Meta:
+        model = GroupRanking
+        fields = ('id', 'group', 'album')
+        read_only_fields = ('added_by',)
+
+    def validate(self, data):
+        group = data['group']
+        user = self.context['request'].user
+        
+        # 1. VALIDAÇÃO DE PERMISSÃO: O usuário deve ser membro do grupo para adicionar um ranking.
+        if not Group.objects.filter(id=group.id, members=user).exists():
+            raise serializers.ValidationError(
+                "Você precisa ser membro deste grupo para adicionar um ranking."
+            )
+        return data
+
+    def create(self, validated_data):
+        # 2. CRIAÇÃO: Cria o GroupRanking
+        validated_data['added_by'] = self.context['request'].user
+        group_ranking = super().create(validated_data)
+        
+        # 3. DISPARO DE NOTIFICAÇÃO (TAREFA CELERY)
+        # Assumindo uma função de Celery que notificará todos os membros:
+        # from .tasks import notify_group_of_new_ranking
+        # notify_group_of_new_ranking.delay(group_ranking.id)
+        
+        return group_ranking
