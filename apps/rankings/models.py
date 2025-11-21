@@ -171,3 +171,38 @@ class RankedTrack(models.Model):
     class Meta:
         ordering = ['position']
     
+class Notification(models.Model):
+    # Quem deve receber a notificação
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='notifications'
+    )
+    
+    # Tipo de notificação (para fácil filtragem e apresentação no frontend)
+    TYPE_CHOICES = [
+        ('INVITE', 'Convite de Grupo'),
+        ('MATCH_ALERT', 'Alerta de Rankeamento'),
+        ('GENERIC', 'Geral'),
+    ]
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='GENERIC')
+    
+    # Conteúdo da notificação
+    message = models.CharField(max_length=255)
+    
+    # Link ou ID relacionado (opcional, ex: ID do grupo)
+    related_id = models.IntegerField(null=True, blank=True) 
+    
+    # Status de leitura
+    is_read = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Notificação"
+        verbose_name_plural = "Notificações"
+
+    def __str__(self):
+        return f"[{self.type}] para {self.recipient.username}: {self.message[:40]}..."
+
