@@ -11,4 +11,19 @@ class User(AbstractUser):
         verbose_name="País de Origem"
     )
     
+    TEMA_CHOICES = (
+        ("TS", "Taylor Swift (Debut)"),
+        ("FEARLESS", "Fearless"),
+        ("SPEAK_NOW", "Speak Now"),
+        ("RED", "Red"),
+        ("1989", "1989"),
+        ("REPUTATION", "Reputation"),
+        ("LOVER", "Lover"),
+        ("FOLKLORE", "Folklore"),
+        ("EVERMORE", "Evermore"),
+        ("MIDNIGHTS", "Midnights"),
+        ("TTPD", "The Tortured Poets Department"),
+        ("SHOWGIRL", "The Life of a Showgirl")
+    )
     
+  
