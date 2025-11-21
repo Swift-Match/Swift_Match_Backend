@@ -76,3 +76,58 @@ class TrackRanking(models.Model):
         return f"{self.user.username}'s Track Ranking: {self.track.title} ({self.position}°)"
     
 
+class CountryGlobalRanking(models.Model):
+    """
+    Armazena o resultado do cálculo global do ranking de álbuns para um país.
+    Este modelo é populado por uma tarefa agendada (Cron Job/Celery).
+    """
+    country_name = models.CharField(
+        max_length=100, 
+        unique=True, 
+        verbose_name='Nome do País'
+    )
+    user_count = models.IntegerField(
+        default=0, 
+        verbose_name='Número de Usuários Ativos'
+    ) # 🌟 Necessário para definir o tamanho da bubble no frontend
+
+    # Análise de Consenso/Extremos (Os IDs dos álbuns mais relevantes)
+    consensus_album = models.ForeignKey(
+        Album, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='country_consensus',
+        verbose_name='Álbum Favorito (Consenso)'
+    )
+    polarization_album = models.ForeignKey(
+        Album, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='country_polarization',
+        verbose_name='Álbum da Maior Polarização'
+    )
+
+    global_consensus_track = models.ForeignKey(
+        Track, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='country_global_consensus',
+        verbose_name='Música Global Favorita'
+    )
+
+    # Armazena o ranking completo (Álbum: Posição Média, Desvio Padrão)
+    # e outras métricas que não precisam de um campo FK dedicado.
+    analysis_data = JSONField(
+        default=dict, 
+        verbose_name='Dados Completos da Análise (JSON)'
+    )
+    
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Ranking Global por País'
+        verbose_name_plural = 'Rankings Globais por País'
+
+    def __str__(self):
+        return f"Ranking de Álbuns: {self.country_name}"
+    
