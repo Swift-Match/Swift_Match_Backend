@@ -10,6 +10,8 @@ from .models import (
 from apps.albums.models import Album
 from apps.tracks.models import Track
 from apps.social.models import Group
+from rest_framework.validators import UniqueTogetherValidator
+
 
 # Serializer para um único item do ranking (recebido dentro de uma lista)
 class AlbumRankingItemSerializer(serializers.Serializer):
@@ -68,49 +70,55 @@ class TrackRankingItemSerializer(serializers.Serializer):
 
 # Serializer principal para receber a lista de rankings de músicas
 class TrackRankingSerializer(serializers.Serializer):
-    # O ID do álbum é necessário para validação
     album_id = serializers.PrimaryKeyRelatedField(queryset=Album.objects.all())
-    # A lista de rankings de músicas
     rankings = TrackRankingItemSerializer(many=True)
 
-    def create(self, validated_data, user):
+    def create(self, validated_data, user=None):
+        # 0. obter user do argumento ou do contexto (para compatibilidade com os testes)
+        if user is None:
+            request = self.context.get('request')
+            user = getattr(request, 'user', None)
+
         album = validated_data.pop('album_id')
         rankings_data = validated_data.pop('rankings')
-        
+
         # 1. Validação de Posição Única e Sequencial
         positions = [item['position'] for item in rankings_data]
         if len(set(positions)) != len(positions):
-            raise serializers.ValidationError("As posições no ranking de músicas devem ser únicas.")
-            
+            raise serializers.ValidationError({
+                'positions': ['As posições no ranking de músicas devem ser únicas.']
+            })
+
         # 2. Validação: todas as músicas pertencem ao álbum fornecido?
-        track_ids = [item['track'].id for item in rankings_data]
+        # supondo que cada item tenha o campo 'track' como instância/PK conforme seu TrackRankingItemSerializer
+        track_ids = [item['track'].id if hasattr(item['track'], 'id') else item['track'] for item in rankings_data]
         valid_tracks = Track.objects.filter(album=album, id__in=track_ids).count()
-        
+
         if valid_tracks != len(track_ids):
-            # Isso significa que pelo menos uma música não pertence ao álbum informado
-            raise serializers.ValidationError(
-                {"tracks": f"Uma ou mais músicas enviadas não pertencem ao álbum '{album.title}'."}
-            )
+            # Retornar uma lista de mensagens em 'tracks' (o teste procura por substrings em cada mensagem)
+            raise serializers.ValidationError({
+                'tracks': [f'Uma ou mais músicas enviadas não pertencem ao álbum "{album.title}".']
+            })
 
         # 3. Limpa rankings de músicas existentes DESTE ÁLBUM para que ele possa enviar um novo
-        # Importante: O usuário pode rankear músicas de outros álbuns, mas este endpoint 
-        # trata apenas do ranking do álbum atual.
-        tracks_to_delete = Track.objects.filter(album=album, id__in=track_ids)
-        TrackRanking.objects.filter(user=user, track__in=tracks_to_delete).delete()
+        TrackRanking.objects.filter(user=user, track__album=album).delete()
 
         # 4. Cria os novos objetos de ranking
         ranking_objects = []
         for item in rankings_data:
+            # se item['track'] for PK em vez de instância, buscar a Track
+            track = item['track'] if hasattr(item['track'], 'id') else Track.objects.get(id=item['track'])
             ranking_objects.append(
                 TrackRanking(
                     user=user,
-                    track=item['track'],
+                    track=track,
                     position=item['position']
                 )
             )
-        
+
         TrackRanking.objects.bulk_create(ranking_objects)
         return ranking_objects
+
     
 class CountryGlobalRankingSerializer(serializers.ModelSerializer):
     # Campos que o frontend precisa para o mapa/análise
@@ -141,34 +149,48 @@ class RankedTrackSerializer(serializers.ModelSerializer):
         fields = ('track_id', 'position', 'title')
         # 'user_ranking' será gerenciado pelo serializer pai
         
-class UserRankingCreateSerializer(serializers.ModelSerializer):
-    """Serializer para a submissão de um novo ranking."""
-    # Espera uma lista de tracks rankeadas
-    ranked_tracks = RankedTrackSerializer(many=True) 
+from rest_framework import serializers
 
-    class Meta:
-        model = UserRanking
-        fields = ('album', 'ranked_tracks')
-        read_only_fields = ('user',)
+class UserRankingCreateSerializer(serializers.Serializer):
+    group_ranking = serializers.PrimaryKeyRelatedField(queryset=GroupRanking.objects.all())
+    ranked_tracks = RankedTrackSerializer(many=True)  # ou seu serializer atual
+
+    def validate(self, attrs):
+
+        request = self.context.get('request')
+        
+        # Verifica se a request existe e se o usuário é anônimo/inválido
+        if not request or not request.user or request.user.is_anonymous:
+            # Lança um erro que será capturado por is_valid()
+            raise serializers.ValidationError({
+                'user': ['O usuário deve estar autenticado para criar um ranking.']
+            })
+            
+        # Restaura as validações que dependem só do payload
+        ranked = attrs.get('ranked_tracks', [])
+        positions = [item['position'] for item in ranked]
+        if len(set(positions)) != len(positions):
+            raise serializers.ValidationError({
+                'ranked_tracks': ['As posições devem ser únicas.']
+            })
+            
+        return attrs
 
     def create(self, validated_data):
-        # 1. Extrair a lista de tracks e posições
+    
+        # 1. Pop (remover) o user que foi injetado pelo serializer.save(user=user_fixture)
+        #    e os dados aninhados
+        user = validated_data.pop('user')  # <--- NOVA LINHA/ALTERAÇÃO CRÍTICA
         ranked_tracks_data = validated_data.pop('ranked_tracks')
         
-        # 2. Criar o objeto UserRanking principal
-        # O self.context['request'].user é passado da View
-        user_ranking = UserRanking.objects.create(
-            user=self.context['request'].user, 
-            **validated_data
-        )
+        # 2. Cria o objeto principal UserRanking
+        # Agora validated_data contém apenas 'group_ranking', e 'user' é passado separadamente
+        user_ranking = UserRanking.objects.create(user=user, **validated_data) 
 
-        # 3. Criar os objetos RankedTrack aninhados
-        ranked_track_objects = [
-            RankedTrack(user_ranking=user_ranking, **item)
-            for item in ranked_tracks_data
-        ]
-        RankedTrack.objects.bulk_create(ranked_track_objects)
-        
+        # 3. Cria os objetos aninhados RankedTrack
+        for track_data in ranked_tracks_data:
+            RankedTrack.objects.create(user_ranking=user_ranking, **track_data)
+
         return user_ranking
     
 
@@ -177,8 +199,14 @@ class GroupRankingCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = GroupRanking
-        fields = ('id', 'group', 'album')
-        read_only_fields = ('added_by',)
+        fields = ['group', 'album']
+        validators = [
+            UniqueTogetherValidator(
+                queryset=GroupRanking.objects.all(),
+                fields=('group', 'album'),
+                message='já existe um ranking para este grupo e álbum.'
+            )
+        ]
 
     def validate(self, data):
         group = data['group']
