@@ -30,11 +30,14 @@ INSTALLED_APPS = [
     "apps.rankings.apps.RankingsConfig",
     "apps.social.apps.SocialConfig",
     'django_celery_beat',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    'corsheaders.middleware.CorsMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
     "django.middleware.common.CommonMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",     
     "django.contrib.messages.middleware.MessageMiddleware",        
@@ -121,3 +124,15 @@ CELERY_BEAT_SCHEDULE = {
         'options': {'queue': 'default'}
     },
 }
+
+CORS_ALLOW_ALL_ORIGINS = False 
+
+# Lista de origens permitidas para acessar o Backend.
+# O Frontend Vite está em localhost:5173.
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # SEU FRONTEND VITE
+    "http://127.0.0.1:5173",  # Alternativa de localhost
+]
+
+# Permite que requisições incluam credenciais (necessário para JWT, se você usar cookies)
+CORS_ALLOW_CREDENTIALS = True
