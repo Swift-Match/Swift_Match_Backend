@@ -10,81 +10,145 @@ import statistics
 from .models import TrackRanking
 from django.db.models import Avg
 from apps.social.models import Group
+from collections import defaultdict
+from django.apps import apps
+from typing import Dict
+import logging
 
-def calculate_album_compatibility(user_a, user_b):
+
+logger = logging.getLogger(__name__)
+
+
+def _calculate_compatibility_from_queryset(shared_rankings, id_field_name):
     """
-    Calcula a compatibilidade do ranking de álbuns entre dois usuários.
-    Retorna (percentual_compatibilidade, num_shared_albums).
+    Helper que recebe um queryset já convertido em .values(...) com keys:
+    - id_field_name (ex: 'album_id' or 'track_id')
+    - 'position'
+    - 'user_b_position'
+    Retorna (percent, count, report)
     """
-    if user_a.id == user_b.id:
-        return 100, 0
+    num_shared = shared_rankings.count()
+    if num_shared == 0:
+        return 0.0, 0, {}
 
-    rankings_a = AlbumRanking.objects.filter(user=user_a).order_by('album_id')
-    rankings_b = AlbumRanking.objects.filter(user=user_b).order_by('album_id')
-
-    shared_rankings = rankings_a.filter(album__in=rankings_b.values('album')).values(
-        'album_id', 
-        'position', 
-        user_b_position=F('album__user_rankings__position')
-    ).filter(album__user_rankings__user=user_b)
-    
-    num_shared_albums = shared_rankings.count()
-
-    if num_shared_albums == 0:
-        return 0, 0
-
-    # 1. Métrica: Média da Diferença Absoluta por Álbum
-    avg_abs_diff = sum(abs(item['position'] - item['user_b_position']) for item in shared_rankings) / num_shared_albums
-    
-    # 2. Conversão para Porcentagem (0% se a diferença média for >= 5 posições)
-    max_diff_reference = 5 
-    compatibility_percent = max(0, 100 * (1 - (avg_abs_diff / max_diff_reference)))
-    
     min_sum = float('inf')
     max_sum = float('-inf')
     max_diff = -1
     min_diff = float('inf')
-    
+
+    fav_id = None
+    least_id = None
+    most_div_id = None
+    most_conc_id = None
+
+    total_abs_diff = 0
+
+    for item in shared_rankings:
+        pos_a = item['position']
+        pos_b = item['user_b_position']
+        sum_pos = pos_a + pos_b
+        abs_diff = abs(pos_a - pos_b)
+        total_abs_diff += abs_diff
+
+        if sum_pos < min_sum:
+            min_sum = sum_pos
+            fav_id = item[id_field_name]
+
+        if sum_pos > max_sum:
+            max_sum = sum_pos
+            least_id = item[id_field_name]
+
+        if abs_diff > max_diff:
+            max_diff = abs_diff
+            most_div_id = item[id_field_name]
+
+        if abs_diff < min_diff:
+            min_diff = abs_diff
+            most_conc_id = item[id_field_name]
+
+    avg_abs_diff = total_abs_diff / num_shared
+    max_diff_reference = 5.0
+    compatibility_percent = max(0.0, 100.0 * (1 - (avg_abs_diff / max_diff_reference)))
+
+    report = {
+        f"favorite_{id_field_name}": fav_id,
+        f"least_favorite_{id_field_name}": least_id,
+        f"most_divergent_{id_field_name}": most_div_id,
+        f"most_concordant_{id_field_name}": most_conc_id,
+        "max_position_difference": max_diff,
+        "min_position_difference": min_diff,
+    }
+
+    return round(compatibility_percent, 2), num_shared, report
+
+
+def calculate_album_compatibility(user_a, user_b):
+    """
+    Retorna (percent: float, num_shared_albums: int, analysis_report: dict).
+    Compatível com related_name 'user_rankings' no modelo Album.
+    """
+    if user_a.id == user_b.id:
+        return 100.0, 0, {}
+
+    # NOTE: seu Album expõe a relação reversa como `user_rankings`
+    shared_albums_qs = Album.objects.filter(
+        user_rankings__user=user_a
+    ).filter(
+        user_rankings__user=user_b
+    ).distinct()
+
+    num_shared_albums = shared_albums_qs.count()
+    if num_shared_albums == 0:
+        return 0.0, 0, {}
+
+    min_sum = float('inf')
+    max_sum = float('-inf')
+    max_diff = -1
+    min_diff = float('inf')
+
     favorite_album = None
     least_favorite_album = None
     most_divergent_album = None
     most_concordant_album = None
-    
-    avg_abs_diff = 0
-    
-    for item in shared_rankings:
-        pos_a = item['position']
-        pos_b = item['user_b_position']
-        
+
+    total_abs_diff = 0
+    processed_count = 0
+
+    for album in shared_albums_qs:
+        try:
+            pos_a = AlbumRanking.objects.get(user=user_a, album=album).position
+            pos_b = AlbumRanking.objects.get(user=user_b, album=album).position
+        except AlbumRanking.DoesNotExist:
+            continue
+
+        processed_count += 1
         sum_pos = pos_a + pos_b
         abs_diff = abs(pos_a - pos_b)
-        avg_abs_diff += abs_diff
+        total_abs_diff += abs_diff
 
-        # 1. Favorito Comum (Menor Soma de Posições)
         if sum_pos < min_sum:
             min_sum = sum_pos
-            favorite_album = item['album_id'] 
+            favorite_album = album.id
 
-        # 2. Menos Favorito Comum (Maior Soma de Posições)
         if sum_pos > max_sum:
             max_sum = sum_pos
-            least_favorite_album = item['album_id']
+            least_favorite_album = album.id
 
-        # 3. Maior Divergência (Maior Diferença Absoluta)
         if abs_diff > max_diff:
             max_diff = abs_diff
-            most_divergent_album = item['album_id']
+            most_divergent_album = album.id
 
-        # 4. Maior Concordância (Menor Diferença Absoluta)
         if abs_diff < min_diff:
             min_diff = abs_diff
-            most_concordant_album = item['album_id']
+            most_concordant_album = album.id
 
-    avg_abs_diff /= num_shared_albums
-    
-    max_diff_reference = 5 
-    compatibility_percent = max(0, 100 * (1 - (avg_abs_diff / max_diff_reference)))
-    
+    if processed_count == 0:
+        return 0.0, 0, {}
+
+    avg_abs_diff = total_abs_diff / processed_count
+    max_diff_reference = 5.0
+    compatibility_percent = max(0.0, 100.0 * (1 - (avg_abs_diff / max_diff_reference)))
+
     analysis_report = {
         "favorite_album_id": favorite_album,
         "least_favorite_album_id": least_favorite_album,
@@ -93,101 +157,28 @@ def calculate_album_compatibility(user_a, user_b):
         "max_position_difference": max_diff,
         "min_position_difference": min_diff,
     }
-    
-    return round(compatibility_percent, 2), num_shared_albums, analysis_report
 
-def calculate_track_compatibility(user_a, user_b, album):
+    return round(compatibility_percent, 2), processed_count, analysis_report
+
+
+def calculate_track_compatibility(user_a, user_b):
     """
-    Calcula a compatibilidade de ranking de MÚSICAS de um álbum específico
-    entre dois usuários, e gera o relatório de análise.
-    Retorna (percentual_compatibilidade, num_shared_tracks, analysis_report).
+    Calcula compatibilidade entre TrackRanking de dois usuários.
+    Retorna (percent, num_shared_tracks, analysis_report).
     """
     if user_a.id == user_b.id:
-        return 100, 0, None
+        return 100.0, 0, {}
 
-    # Filtra os rankings de músicas APENAS para o álbum fornecido
-    rankings_a = AlbumRanking.objects.filter(
-        user=user_a, 
-        track__album=album
-    ).order_by('track_id')
-    
-    rankings_b = AlbumRanking.objects.filter(
-        user=user_b, 
-        track__album=album
-    ).order_by('track_id')
+    rankings_a = TrackRanking.objects.filter(user=user_a).order_by('track_id')
+    rankings_b = TrackRanking.objects.filter(user=user_b).order_by('track_id')
 
-    # Fazer JOIN para encontrar apenas as músicas rankeadas por AMBOS
-    shared_rankings = rankings_a.filter(
-        track__in=rankings_b.values('track')
-    ).values(
-        'track_id', 
-        'position', 
+    shared_rankings = rankings_a.filter(track__in=rankings_b.values('track')).values(
+        'track_id',
+        'position',
         user_b_position=F('track__user_rankings__position')
     ).filter(track__user_rankings__user=user_b)
-    
-    num_shared_tracks = shared_rankings.count()
 
-    if num_shared_tracks == 0:
-        # Se não houver músicas em comum rankeadas neste álbum, retorna 0
-        return 0, 0, None
-
-    # --- Lógica de Análise (Métricas) ---
-    min_sum = float('inf')
-    max_sum = float('-inf')
-    max_diff = -1
-    min_diff = float('inf')
-    
-    favorite_track = None
-    least_favorite_track = None
-    most_divergent_track = None
-    most_concordant_track = None
-    
-    avg_abs_diff = 0
-    
-    for item in shared_rankings:
-        pos_a = item['position']
-        pos_b = item['user_b_position']
-        
-        sum_pos = pos_a + pos_b
-        abs_diff = abs(pos_a - pos_b)
-        avg_abs_diff += abs_diff
-
-        # 1. Favorita Comum (Menor Soma de Posições)
-        if sum_pos < min_sum:
-            min_sum = sum_pos
-            favorite_track = item['track_id'] 
-
-        # 2. Menos Favorita Comum (Maior Soma de Posições)
-        if sum_pos > max_sum:
-            max_sum = sum_pos
-            least_favorite_track = item['track_id']
-
-        # 3. Maior Divergência (Maior Diferença Absoluta)
-        if abs_diff > max_diff:
-            max_diff = abs_diff
-            most_divergent_track = item['track_id']
-
-        # 4. Maior Concordância (Menor Diferença Absoluta)
-        if abs_diff < min_diff:
-            min_diff = abs_diff
-            most_concordant_track = item['track_id']
-
-    avg_abs_diff /= num_shared_tracks
-    
-    max_diff_reference = 5 # Mantemos a mesma referência de compatibilidade
-    compatibility_percent = max(0, 100 * (1 - (avg_abs_diff / max_diff_reference)))
-    
-    analysis_report = {
-        "favorite_track_id": favorite_track,
-        "least_favorite_track_id": least_favorite_track,
-        "most_divergent_track_id": most_divergent_track,
-        "most_concordant_track_id": most_concordant_track,
-        "max_position_difference": max_diff,
-        "min_position_difference": min_diff,
-    }
-    
-    return round(compatibility_percent, 2), num_shared_tracks, analysis_report
-
+    return _calculate_compatibility_from_queryset(shared_rankings, 'track_id')
 
 def get_album_map():
     return {album.id: album for album in Album.objects.all()}
@@ -195,79 +186,66 @@ def get_album_map():
 def calculate_global_ranking():
     """
     Executa o cálculo do ranking de álbuns para todos os países
-    onde há pelo menos 2 usuários ativos.
+    onde há pelo menos 2 usuários com rankings submetidos.
     """
     print("--- INICIANDO CÁLCULO GLOBAL DE RANKING ---")
-    
-    # 1. Agrupar usuários por país e contar quantos há em cada país
-    # Filtrar apenas países com pelo menos 2 usuários com ranking submetido
+
+    # Usa related_name correto 'album_rankings' no User
     countries_data = User.objects.filter(
-        # Certifica-se que o usuário rankeou algo
-        albumranking__isnull=False,
-        # Você pode querer adicionar um filtro de 'is_active' se tiver
+        album_rankings__isnull=False,
     ).values('country').annotate(
         user_count=Count('id', distinct=True)
-    ).filter(user_count__gte=2) # Pelo menos 2 usuários para análise
+    ).filter(user_count__gte=2)
 
     album_map = get_album_map()
-
     track_map = {track.id: track for track in Track.objects.all()}
 
     for country_info in countries_data:
         country = country_info['country']
         user_count = country_info['user_count']
-        
-        # 2. Encontrar todos os rankings de álbuns para este país
-        country_user_ids = User.objects.filter(country=country).values_list('id', flat=True)
 
-        # Agregação de todos os rankings de álbuns dos usuários do país
+        # ids dos usuários do país
+        country_user_ids = list(User.objects.filter(country=country).values_list('id', flat=True))
+
+        # agregação de álbuns (média + contagem)
         album_stats = AlbumRanking.objects.filter(
             user_id__in=country_user_ids
         ).values('album_id').annotate(
             avg_position=Avg('position'),
-            # Desvio padrão para medir a polarização (StdDev requer PostgreSQL, senão use estatísticas em Python)
-            # Se você usa PostgreSQL:
-            # std_dev_position=StdDev('position'),
-            
-            # Se não usa PostgreSQL (fallback em Python):
             count=Count('position')
-            
-        ).order_by('avg_position') # O menor AVG é o álbum mais votado
+        ).order_by('avg_position')
 
-        # 3. Processamento para Polarização (Se não usar StdDev do ORM)
+        # coleta todas as posições por álbum (fallback para stddev em Python)
         full_positions = defaultdict(list)
         for ranking in AlbumRanking.objects.filter(user_id__in=country_user_ids):
-             full_positions[ranking.album_id].append(ranking.position)
+            full_positions[ranking.album_id].append(ranking.position)
 
-        # 4. Compilar Análise Detalhada
         analysis_data = {}
-        
+
         for stats in album_stats:
             album_id = stats['album_id']
-            positions = full_positions[album_id]
-            
+            positions = full_positions.get(album_id, [])
+
             if len(positions) > 1:
-                # Calcula Desvio Padrão usando a biblioteca Python (para compatibilidade)
                 std_dev = statistics.stdev(positions)
             else:
-                std_dev = 0
-                
+                std_dev = 0.0
+
+            album_obj = album_map.get(album_id)
+            album_title = album_obj.title if album_obj else None
+
             analysis_data[album_id] = {
-                "album_title": album_map.get(album_id).title,
-                "avg_rank": round(stats['avg_position'], 2),
-                "std_dev_rank": round(std_dev, 2), # Polarização!
-                "votes": stats['count'] 
+                "album_title": album_title,
+                "avg_rank": round(stats['avg_position'], 2) if stats['avg_position'] is not None else None,
+                "std_dev_rank": round(std_dev, 2),
+                "votes": stats['count']
             }
 
-        # 5. Encontrar os Extremos Nacionais
-        
-        # Consenso (Menor Média)
+        # extremos nacionais
         consensus_album_id = min(analysis_data, key=lambda k: analysis_data[k]['avg_rank']) if analysis_data else None
-        
-        # Polarização (Maior Desvio Padrão)
         polarization_album_id = max(analysis_data, key=lambda k: analysis_data[k]['std_dev_rank']) if analysis_data else None
-        
-        # 6. Salvar ou Atualizar o Model Global
+
+        # salva/atualiza CountryGlobalRanking
         ranking_obj, created = CountryGlobalRanking.objects.update_or_create(
             country_name=country,
             defaults={
@@ -279,178 +257,164 @@ def calculate_global_ranking():
         )
         print(f"✅ Ranking de {country} {'criado' if created else 'atualizado'}. Usuários: {user_count}")
 
-        # 7. ANÁLISE DE MÚSICAS POR PAÍS
-        
-        # 7.1. Busca de Posições (Otimizada para o país atual)
+        # ANALISE DE TRACKS POR PAÍS
         member_track_rankings = TrackRanking.objects.filter(
             user_id__in=country_user_ids
         ).select_related('track')
-        
+
         track_positions = defaultdict(list)
         for ranking in member_track_rankings:
-            # Garante que o track_id está correto e agrupado pelo país
             track_positions[ranking.track_id].append(ranking.position)
 
-        # 7.2. Cálculo de Média e Desvio Padrão por Música
-        
         global_consensus_track_id = None
         min_global_avg = float('inf')
-        
+
+        # estrutura temporária: album_id (int) -> { "top_track_id": id, "tracks": { track_id: analysis } }
         track_analysis_by_album = defaultdict(lambda: {"top_track_id": None, "tracks": {}})
         polarization_track_id_by_album = {}
 
         for track_id, positions in track_positions.items():
-            if not track_map.get(track_id): continue # Ignora se a track não foi encontrada
-            
+            track_obj = track_map.get(track_id)
+            if not track_obj:
+                continue
+
             avg_position = statistics.mean(positions)
             votes = len(positions)
-            
             try:
-                std_dev = statistics.stdev(positions)
+                std_dev = statistics.stdev(positions) if votes > 1 else 0.0
             except statistics.StatisticsError:
-                std_dev = 0
-                
+                std_dev = 0.0
+
             analysis = {
-                "track_title": track_map[track_id].title,
-                "album_id": track_map[track_id].album_id,
+                "track_title": track_obj.title,
+                "album_id": track_obj.album_id,
                 "avg_rank": round(avg_position, 2),
-                "std_dev_rank": round(std_dev, 2), 
+                "std_dev_rank": round(std_dev, 2),
                 "votes": votes
             }
 
-            # 7.3. Determinar Consenso Global (Música favorita de TODOS os álbuns)
+            # consenso global (música com menor avg)
             if avg_position < min_global_avg:
-                min_global_avg = avg_position # Corrigi a variável
+                min_global_avg = avg_position
                 global_consensus_track_id = track_id
 
-            # 7.4. Determinar Consenso e Polarização POR ÁLBUM
             album_id = analysis['album_id']
             track_analysis_by_album[album_id]["tracks"][track_id] = analysis
-            
-            # Consenso por Álbum
-            if (track_analysis_by_album[album_id]["top_track_id"] is None or 
-                analysis['avg_rank'] < track_analysis_by_album[album_id]["tracks"][track_analysis_by_album[album_id]["top_track_id"]]['avg_rank']):
-                
+
+            # top track por álbum (menor avg_rank)
+            current_top = track_analysis_by_album[album_id]["top_track_id"]
+            if current_top is None or analysis['avg_rank'] < track_analysis_by_album[album_id]["tracks"][current_top]['avg_rank']:
                 track_analysis_by_album[album_id]["top_track_id"] = track_id
-                
-            # Polarização por Álbum (Maior Desvio Padrão)
-            current_polarized_track_id = polarization_track_id_by_album.get(album_id)
-            if (current_polarized_track_id is None or 
-                analysis['std_dev_rank'] > track_analysis_by_album[album_id]["tracks"][current_polarized_track_id]['std_dev_rank']):
-                
+
+            # polarização por álbum (maior std_dev)
+            current_polarized = polarization_track_id_by_album.get(album_id)
+            cur_std = track_analysis_by_album[album_id]["tracks"].get(current_polarized, {}).get('std_dev_rank', -1)
+            if (current_polarized is None) or (analysis['std_dev_rank'] > cur_std):
                 polarization_track_id_by_album[album_id] = track_id
 
-        # 8. ATUALIZAR MODEL GLOBAL COM DADOS DE TRACKS
-        
-        # O objeto 'ranking_obj' já está definido no passo 6 (álbuns), mas para garantir
-        # a atomicidade (e evitar dois saves), você pode fazer a atualização no final.
-        # Vamos usar o 'ranking_obj' que já foi criado/atualizado na fase 1.
-        
-        # Adiciona a análise de tracks ao JSON existente
-        ranking_obj.analysis_data['track_analysis_by_album'] = dict(track_analysis_by_album)
-        ranking_obj.analysis_data['track_polarization_by_album'] = polarization_track_id_by_album
-        
-        # Define o campo Foreign Key
+        # serializa chaves como strings para JSONField
+        serialized_track_analysis = {}
+        for a_id, info in track_analysis_by_album.items():
+            tracks_serialized = {str(tid): tinfo for tid, tinfo in info["tracks"].items()}
+            serialized_track_analysis[str(a_id)] = {
+                "top_track_id": info["top_track_id"],
+                "tracks": tracks_serialized
+            }
+
+        # atualiza ranking_obj.analysis_data com segurança (cópia)
+        existing = ranking_obj.analysis_data or {}
+        existing = dict(existing)  # copia para evitar mutação inesperada
+        existing['track_analysis_by_album'] = serialized_track_analysis
+        existing['track_polarization_by_album'] = {str(k): v for k, v in polarization_track_id_by_album.items()}
+        ranking_obj.analysis_data = existing
         ranking_obj.global_consensus_track_id = global_consensus_track_id
-        
         ranking_obj.save()
 
         print(f"✅ Ranking de {country} atualizado (Álbuns e Tracks).")
 
     print("--- CÁLCULO GLOBAL FINALIZADO ---")
 
-def get_group_preference_vector(group):
-    """Calcula o vetor de preferência (ranking médio) para um grupo."""
-    
-    member_ids = group.members.values_list('id', flat=True)
-    
-    group_rankings = UserRanking.objects.filter(
-        user_id__in=member_ids
-    ).values('track').annotate(
-        avg_ranking=Avg('ranking')
-    )
-    
-    # Retorna {track_id: ranking_medio}
-    return {
-        ranking['track']: ranking['avg_ranking']
-        for ranking in group_rankings
-    }
+def _get_model(app_label: str, model_name: str):
+    try:
+        return apps.get_model(app_label, model_name)
+    except LookupError:
+        return None
+
 
 def calculate_group_internal_coherence(group) -> float:
     """
-    Calcula a Taxa de Compatibilidade Interna Geral do Grupo (CIGG)
-    com base na média da similaridade dos rankings de todos os membros
-    para os álbuns que o grupo 'matchou'.
+    CIGG (0..100). Implementação fixa para os testes:
+    - usa AlbumRanking e GroupRanking do app 'rankings'
+    - MAX_DIFFERENCE = 5 (constante)
+    - ignora álbuns com < 2 votos
+    - se houver múltiplos votos user+album, a última entrada (order by id) sobrescreve
     """
-    
-    # 1. Encontrar os Álbuns Matchados pelo Grupo
-    # Substitua 'GroupAlbumMatch' pelo nome real do seu modelo de match de álbum
     try:
-        matched_album_ids = GroupRanking.objects.filter(
-            group=group
-        ).values_list('album_id', flat=True)
-    except NameError:
-         # Se GroupAlbumMatch não existe, assumimos que a lista de IDs de álbum é passada
-         # Para este exemplo, vamos simular que não há álbuns matchados.
-         return 0.0
-         
+        AlbumRanking = apps.get_model('rankings', 'AlbumRanking')
+        GroupRanking = apps.get_model('rankings', 'GroupRanking')
+    except LookupError:
+        return 0.0
+
+    matched_album_ids = list(GroupRanking.objects.filter(group=group).values_list('album_id', flat=True))
     if not matched_album_ids:
         return 0.0
 
-    member_ids = group.members.values_list('id', flat=True)
+    member_ids = list(group.members.values_list('id', flat=True))
     if len(member_ids) < 2:
-        return 0.0 # Coerência de grupo não se aplica a 0 ou 1 pessoa.
-
-    # 2. Obter Rankings de todos os Membros para esses Álbuns
-    # Assumindo que UserRanking armazena o ranking de um Álbum/Track
-    all_rankings = UserRanking.objects.filter(
-        user_id__in=member_ids,
-        album_id__in=matched_album_ids 
-        # ATENÇÃO: Se UserRanking é para Track, use Track em vez de Album
-    ).values('user', 'album', 'ranking')
-    
-    # Organiza os rankings por álbum e usuário
-    rankings_by_album = {}
-    for r in all_rankings:
-        album_id = r['album']
-        user_id = r['user']
-        ranking = r['ranking']
-        
-        if album_id not in rankings_by_album:
-            rankings_by_album[album_id] = {}
-        
-        rankings_by_album[album_id][user_id] = ranking
-
-    total_coherence_score = 0
-    total_comparisons = 0
-    MAX_DIFFERENCE = 5  # Diferença máxima entre rankings (ex: 5 - 0)
-
-    # 3. Calcular a Coerência Média (Comparação par a par)
-    
-    for album_id, user_rankings in rankings_by_album.items():
-        # Obtém a lista de rankings para o álbum, apenas de quem votou
-        ranked_users = list(user_rankings.keys())
-        
-        # Compara cada par de usuários que ranquearam o álbum
-        for i in range(len(ranked_users)):
-            for j in range(i + 1, len(ranked_users)):
-                user1_ranking = user_rankings[ranked_users[i]]
-                user2_ranking = user_rankings[ranked_users[j]]
-                
-                # Diferença de Ranking (0 a 5)
-                difference = abs(user1_ranking - user2_ranking)
-                
-                # Converte Incompatibilidade para Similaridade (0.0 a 1.0)
-                similarity = 1.0 - (difference / MAX_DIFFERENCE)
-                
-                total_coherence_score += similarity
-                total_comparisons += 1
-
-    if total_comparisons == 0:
         return 0.0
-        
-    # CIGG é a média de similaridade de todos os pares em todos os álbuns
-    cigg_ratio = total_coherence_score / total_comparisons
-    
-    # Retorna porcentagem (0.0 a 100.0)
-    return cigg_ratio * 100
+
+    # pegamos rows ordenadas por id para que a última entrada sobrescreva
+    rows = AlbumRanking.objects.filter(
+        user_id__in=member_ids,
+        album_id__in=matched_album_ids
+    ).order_by('id').values_list('user_id', 'album_id', 'position')
+
+    rankings_by_album: Dict[int, Dict[int, float]] = {}
+    for user_id, album_id, pos in rows:
+        try:
+            position = float(pos)
+        except Exception:
+            continue
+        # atribuição sobrescreve entradas anteriores com a mesma (user,album)
+        rankings_by_album.setdefault(album_id, {})[user_id] = position
+
+    MAX_DIFFERENCE = 5.0
+
+    total_similarity = 0.0
+    total_pairs = 0
+    debug = []
+
+    for album_id, umap in rankings_by_album.items():
+        if len(umap) < 2:
+            debug.append((album_id, "ignored_single_vote"))
+            continue
+
+        users = list(umap.keys())
+        album_sum = 0.0
+        album_comps = 0
+        for i in range(len(users)):
+            for j in range(i + 1, len(users)):
+                r1 = umap[users[i]]
+                r2 = umap[users[j]]
+                diff = abs(r1 - r2)
+                similarity = 1.0 - (diff / MAX_DIFFERENCE)
+                if similarity < 0.0:
+                    similarity = 0.0
+                album_sum += similarity
+                album_comps += 1
+
+        debug.append((album_id, album_sum, album_comps))
+        total_similarity += album_sum
+        total_pairs += album_comps
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("CIGG debug group=%s matched_albums=%s", getattr(group, "id", group), matched_album_ids)
+        for d in debug:
+            logger.debug(" album debug: %s", d)
+        logger.debug(" total_similarity=%s total_pairs=%s MAX_DIFFERENCE=%s", total_similarity, total_pairs, MAX_DIFFERENCE)
+
+    if total_pairs == 0:
+        return 0.0
+
+    ratio = total_similarity / total_pairs
+    return ratio * 100.0
