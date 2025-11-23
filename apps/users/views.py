@@ -5,8 +5,9 @@ from .serializers import UserRegistrationSerializer
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema   
 from rest_framework.permissions import IsAuthenticated
-from rest_framework import generics
-from .serializers import UserRegistrationSerializer
+from rest_framework import generics, views, status
+from .serializers import UserRegistrationSerializer, UserThemeSerializer, UserFirstLoginSerializer
+from .models import User
 
 class RegisterUserView(APIView):
     """View para o cadastro de novos usuários."""
@@ -36,3 +37,32 @@ class UserProfileView(generics.RetrieveAPIView):
 
 def healthcheck(request):
     return JsonResponse({"status": "ok"})
+
+class UserThemeUpdateView(generics.UpdateAPIView):
+    """
+    Atualiza o tema do usuário logado.
+    """
+    serializer_class = UserThemeSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+
+class UserThemeListView(views.APIView):
+    """
+    Retorna a lista de todos os temas disponíveis.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        temas = [{"key": key, "label": label} for key, label in User.TEMA_CHOICES]
+        return Response(temas, status=status.HTTP_200_OK)
+    
+
+class UserFirstLoginView(generics.RetrieveAPIView):
+    serializer_class = UserFirstLoginSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
