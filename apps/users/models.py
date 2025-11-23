@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 class User(AbstractUser):
 
@@ -24,6 +25,12 @@ class User(AbstractUser):
         ("MIDNIGHTS", "Midnights"),
         ("TTPD", "The Tortured Poets Department"),
         ("SHOWGIRL", "The Life of a Showgirl")
+    )
+
+    first_login = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Primeiro Login"
     )
     
     tema = models.CharField(
