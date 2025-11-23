@@ -9,6 +9,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     friends_count = serializers.SerializerMethodField()
     groups_count = serializers.SerializerMethodField()
 
+    tema = serializers.ChoiceField(
+        choices=User.TEMA_CHOICES,
+        default=User.TEMA_CHOICES[-1][0],  # "MIDNIGHTS"
+        required=False
+    )
+
+
     class Meta:
         model = User
         fields = (
@@ -17,20 +24,21 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'email', 
             'password', 
             'country', 
+            'tema', 
             'friends_count',  
             'groups_count',   
         )
 
     def create(self, validated_data):
-        # Sobrescreve o método create para usar 'create_user' 
-        # e garantir que a senha seja salva como hash (segurança!)
-        user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data['email'],
-            password=validated_data['password'],
-            first_name=validated_data.get('first_name', '')
-        )
-        return user
+            tema = validated_data.pop('tema', User.TEMA_CHOICES[-1][0])
+            user = User.objects.create_user(
+                username=validated_data['username'],
+                email=validated_data['email'],
+                password=validated_data['password'],
+                first_name=validated_data.get('first_name', ''),
+                tema=tema
+            )
+            return user
     
     def get_friends_count(self, obj) -> int:
         # Contagem de amizades aceitas (onde o usuário é from_user OU to_user)
@@ -54,3 +62,20 @@ class UserPublicSerializer(serializers.ModelSerializer):
         # o remetente/destinatário do convite.
         fields = ['id', 'username', 'first_name', 'last_name', 'profile_picture_url'] 
         # Ajuste os campos conforme seu modelo CustomUser
+
+class UserThemeSerializer(serializers.ModelSerializer):
+    tema = serializers.ChoiceField(
+        choices=User.TEMA_CHOICES,
+        required=True,
+        help_text="Escolha o tema do usuário"
+    )
+
+    class Meta:
+        model = User
+        fields = ['tema']
+
+
+class UserFirstLoginSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['first_login']
