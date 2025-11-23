@@ -557,3 +557,23 @@ class GroupRankingViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(added_by=self.request.user)
 
+
+class AlbumRankingView(APIView):
+    
+    def put(self, request):
+        """
+        Permite ao usuário autenticado atualizar (sobrescrever) seu ranking de álbuns.
+        Reutiliza a lógica de validação e salvamento do POST (Create).
+        """
+        serializer = AlbumRankingSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                serializer.create(serializer.validated_data, user=request.user)
+                return Response(
+                    {"message": "Ranking de álbuns atualizado com sucesso!"}, 
+                    status=status.HTTP_200_OK # 200 OK para atualização bem-sucedida
+                )
+            except serializers.ValidationError as e:
+                return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
