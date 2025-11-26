@@ -1,24 +1,58 @@
-from apps.users.models import User
-from apps.rankings.models import AlbumRanking
-from django.db.models import F
-from apps.tracks.models import Track
-from django.db.models import Avg, StdDev, Count
-from apps.users.models import User
-from apps.albums.models import Album
-from .models import AlbumRanking, CountryGlobalRanking, UserRanking, GroupRanking
-import statistics
-from .models import TrackRanking
-from django.db.models import Avg
-from apps.social.models import Group
-from collections import defaultdict
-from django.apps import apps
-from typing import Dict
+# apps/rankings/utils.py
 import logging
+import statistics
+from collections import defaultdict
+from typing import Dict
 
+from django.apps import apps
+from django.db.models import Avg, Count, F
 
 logger = logging.getLogger(__name__)
 
 
+# ----- Helpers para carregar modelos com fallback -----
+def _get_model(app_label: str, model_name: str):
+    try:
+        return apps.get_model(app_label, model_name)
+    except LookupError:
+        return None
+
+
+# Carrega modelos (prefere imports diretos quando existirem no projeto)
+User = _get_model('users', 'User')
+Album = _get_model('albums', 'Album')
+AlbumRanking = _get_model('rankings', 'AlbumRanking') or _get_model('albums', 'AlbumRanking')
+Track = _get_model('tracks', 'Track')
+TrackRanking = _get_model('rankings', 'TrackRanking') or _get_model('tracks', 'TrackRanking')
+CountryGlobalRanking = _get_model('rankings', 'CountryGlobalRanking')
+Group = _get_model('social', 'Group')
+GroupRanking = _get_model('rankings', 'GroupRanking')
+
+
+# ----- Mapa de álbuns (GLOBAL — importante para Celery worker) -----
+def get_album_map() -> Dict[int, object]:
+    """
+    Retorna { album_id: Album object }.
+    Mantido no escopo global para que Celery worker consiga enxergar.
+    """
+    album_map: Dict[int, object] = {}
+    if Album is None:
+        logger.warning("Album model not found when building album_map.")
+        return album_map
+
+    try:
+        for album in Album.objects.all():
+            try:
+                album_map[int(album.id)] = album
+            except Exception:
+                # salta album com id inválido
+                continue
+    except Exception as e:
+        logger.exception("Failed to build album_map: %s", e)
+    return album_map
+
+
+# ----- FUNÇÕES DE COMPATIBILIDADE -----
 def _calculate_compatibility_from_queryset(shared_rankings, id_field_name):
     """
     Helper que recebe um queryset já convertido em .values(...) com keys:
@@ -27,7 +61,7 @@ def _calculate_compatibility_from_queryset(shared_rankings, id_field_name):
     - 'user_b_position'
     Retorna (percent, count, report)
     """
-    num_shared = shared_rankings.count()
+    num_shared = shared_rankings.count() if hasattr(shared_rankings, 'count') else len(list(shared_rankings))
     if num_shared == 0:
         return 0.0, 0, {}
 
@@ -44,27 +78,33 @@ def _calculate_compatibility_from_queryset(shared_rankings, id_field_name):
     total_abs_diff = 0
 
     for item in shared_rankings:
-        pos_a = item['position']
-        pos_b = item['user_b_position']
+        pos_a = item.get('position')
+        pos_b = item.get('user_b_position')
+        if pos_a is None or pos_b is None:
+            continue
+
         sum_pos = pos_a + pos_b
         abs_diff = abs(pos_a - pos_b)
         total_abs_diff += abs_diff
 
         if sum_pos < min_sum:
             min_sum = sum_pos
-            fav_id = item[id_field_name]
+            fav_id = item.get(id_field_name)
 
         if sum_pos > max_sum:
             max_sum = sum_pos
-            least_id = item[id_field_name]
+            least_id = item.get(id_field_name)
 
         if abs_diff > max_diff:
             max_diff = abs_diff
-            most_div_id = item[id_field_name]
+            most_div_id = item.get(id_field_name)
 
         if abs_diff < min_diff:
             min_diff = abs_diff
-            most_conc_id = item[id_field_name]
+            most_conc_id = item.get(id_field_name)
+
+    if num_shared == 0:
+        return 0.0, 0, {}
 
     avg_abs_diff = total_abs_diff / num_shared
     max_diff_reference = 5.0
@@ -85,17 +125,23 @@ def _calculate_compatibility_from_queryset(shared_rankings, id_field_name):
 def calculate_album_compatibility(user_a, user_b):
     """
     Retorna (percent: float, num_shared_albums: int, analysis_report: dict).
-    Compatível com related_name 'user_rankings' no modelo Album.
+    Compatível com related_name 'user_rankings' no modelo Album (fallback robusto).
     """
+    if User is None or AlbumRanking is None or Album is None:
+        return 0.0, 0, {}
+
     if user_a.id == user_b.id:
         return 100.0, 0, {}
 
-    # NOTE: seu Album expõe a relação reversa como `user_rankings`
-    shared_albums_qs = Album.objects.filter(
-        user_rankings__user=user_a
-    ).filter(
-        user_rankings__user=user_b
-    ).distinct()
+    # tenta construir queryset de álbuns compartilhados de forma robusta
+    try:
+        shared_albums_qs = Album.objects.filter(user_rankings__user=user_a).filter(user_rankings__user=user_b).distinct()
+    except Exception:
+        # fallback: procurar album_ids via AlbumRanking
+        album_ids_a = AlbumRanking.objects.filter(user=user_a).values_list('album_id', flat=True)
+        album_ids_b = AlbumRanking.objects.filter(user=user_b).values_list('album_id', flat=True)
+        shared_ids = set(album_ids_a).intersection(set(album_ids_b))
+        shared_albums_qs = Album.objects.filter(id__in=list(shared_ids))
 
     num_shared_albums = shared_albums_qs.count()
     if num_shared_albums == 0:
@@ -161,56 +207,77 @@ def calculate_album_compatibility(user_a, user_b):
     return round(compatibility_percent, 2), processed_count, analysis_report
 
 
-def calculate_track_compatibility(user_a, user_b):
+def calculate_track_compatibility(user_a, user_b, album):
     """
-    Calcula compatibilidade entre TrackRanking de dois usuários.
+    Calcula compatibilidade entre TrackRanking de dois usuários PARA UM ÁLBUM ESPECÍFICO.
     Retorna (percent, num_shared_tracks, analysis_report).
     """
+    if TrackRanking is None or Track is None:
+        return 0.0, 0, {}
+
     if user_a.id == user_b.id:
         return 100.0, 0, {}
 
-    rankings_a = TrackRanking.objects.filter(user=user_a).order_by('track_id')
-    rankings_b = TrackRanking.objects.filter(user=user_b).order_by('track_id')
+    rankings_a = TrackRanking.objects.filter(user=user_a, track__album=album).order_by('track_id')
+    rankings_b = TrackRanking.objects.filter(user=user_b, track__album=album).order_by('track_id')
+    track_ids_b = rankings_b.values_list('track_id', flat=True)
 
-    shared_rankings = rankings_a.filter(track__in=rankings_b.values('track')).values(
-        'track_id',
-        'position',
+    shared_rankings_qs = rankings_a.filter(track_id__in=track_ids_b).annotate(
         user_b_position=F('track__user_rankings__position')
-    ).filter(track__user_rankings__user=user_b)
+    ).filter(track__user_rankings__user=user_b).values('track_id', 'position', 'user_b_position').distinct()
 
-    return _calculate_compatibility_from_queryset(shared_rankings, 'track_id')
+    return _calculate_compatibility_from_queryset(shared_rankings_qs, 'track_id')
 
-def get_album_map():
-    return {album.id: album for album in Album.objects.all()}
 
+# ----- RANKING GLOBAL POR PAÍS -----
 def calculate_global_ranking():
     """
     Executa o cálculo do ranking de álbuns para todos os países
     onde há pelo menos 2 usuários com rankings submetidos.
+    Popula/atualiza CountryGlobalRanking.
     """
+    if User is None or AlbumRanking is None or CountryGlobalRanking is None:
+        logger.error("Required models not available for calculate_global_ranking.")
+        return
+
     print("--- INICIANDO CÁLCULO GLOBAL DE RANKING ---")
 
-    # Usa related_name correto 'album_rankings' no User
-    countries_data = User.objects.filter(
-        album_rankings__isnull=False,
-    ).values('country').annotate(
-        user_count=Count('id', distinct=True)
-    ).filter(user_count__gte=2)
+    # Primeiro tenta identificar países usando related_name no User
+    try:
+        countries_data = (
+            User.objects.filter(album_rankings__isnull=False)
+            .values('country')
+            .annotate(user_count=Count('id', distinct=True))
+            .filter(user_count__gte=2)
+        )
+    except Exception:
+        # fallback: agregar via AlbumRanking join
+        try:
+            countries_data = (
+                AlbumRanking.objects.values('user__country')
+                .annotate(user_count=Count('user', distinct=True))
+                .filter(user__country__isnull=False)
+            )
+        except Exception as e:
+            logger.exception("Failed to obtain countries_data: %s", e)
+            countries_data = []
 
     album_map = get_album_map()
-    track_map = {track.id: track for track in Track.objects.all()}
+    track_map = {t.id: t for t in Track.objects.all()} if Track is not None else {}
 
     for country_info in countries_data:
-        country = country_info['country']
-        user_count = country_info['user_count']
+        country = country_info.get('country') or country_info.get('user__country')
+        user_count = country_info.get('user_count') or country_info.get('user_count', 0)
 
-        # ids dos usuários do país
+        if not country:
+            continue
+
+        print(f"Processando país: {country} (users={user_count})")
+
         country_user_ids = list(User.objects.filter(country=country).values_list('id', flat=True))
 
         # agregação de álbuns (média + contagem)
-        album_stats = AlbumRanking.objects.filter(
-            user_id__in=country_user_ids
-        ).values('album_id').annotate(
+        album_stats = AlbumRanking.objects.filter(user_id__in=country_user_ids).values('album_id').annotate(
             avg_position=Avg('position'),
             count=Count('position')
         ).order_by('avg_position')
@@ -223,44 +290,71 @@ def calculate_global_ranking():
         analysis_data = {}
 
         for stats in album_stats:
-            album_id = stats['album_id']
+            album_id = stats.get('album_id')
             positions = full_positions.get(album_id, [])
 
             if len(positions) > 1:
-                std_dev = statistics.stdev(positions)
+                try:
+                    std_dev = statistics.stdev(positions)
+                except statistics.StatisticsError:
+                    std_dev = 0.0
             else:
                 std_dev = 0.0
 
-            album_obj = album_map.get(album_id)
-            album_title = album_obj.title if album_obj else None
+            album_obj = album_map.get(int(album_id)) if album_id is not None else None
+            album_title = getattr(album_obj, 'title', None) if album_obj else None
 
-            analysis_data[album_id] = {
+            analysis_data[int(album_id)] = {
                 "album_title": album_title,
-                "avg_rank": round(stats['avg_position'], 2) if stats['avg_position'] is not None else None,
+                "avg_rank": round(stats.get('avg_position', 0), 2) if stats.get('avg_position') is not None else None,
                 "std_dev_rank": round(std_dev, 2),
-                "votes": stats['count']
+                "votes": stats.get('count', 0)
             }
 
-        # extremos nacionais
-        consensus_album_id = min(analysis_data, key=lambda k: analysis_data[k]['avg_rank']) if analysis_data else None
-        polarization_album_id = max(analysis_data, key=lambda k: analysis_data[k]['std_dev_rank']) if analysis_data else None
+        # extremos nacionais (cuidando de None)
+        consensus_album_id = None
+        polarization_album_id = None
+        if analysis_data:
+            try:
+                consensus_album_id = min(
+                    analysis_data,
+                    key=lambda k: (analysis_data[k]['avg_rank'] if analysis_data[k]['avg_rank'] is not None else float('inf'))
+                )
+            except Exception:
+                consensus_album_id = None
+            try:
+                polarization_album_id = max(analysis_data, key=lambda k: analysis_data[k].get('std_dev_rank', -1))
+            except Exception:
+                polarization_album_id = None
+
+        # garantir inteiros para lookup
+        try:
+            consensus_album_id_int = int(consensus_album_id) if consensus_album_id is not None else None
+        except Exception:
+            consensus_album_id_int = None
+        try:
+            polarization_album_id_int = int(polarization_album_id) if polarization_album_id is not None else None
+        except Exception:
+            polarization_album_id_int = None
 
         # salva/atualiza CountryGlobalRanking
-        ranking_obj, created = CountryGlobalRanking.objects.update_or_create(
-            country_name=country,
-            defaults={
-                'user_count': user_count,
-                'consensus_album': album_map.get(consensus_album_id),
-                'polarization_album': album_map.get(polarization_album_id),
-                'analysis_data': analysis_data
-            }
-        )
-        print(f"✅ Ranking de {country} {'criado' if created else 'atualizado'}. Usuários: {user_count}")
+        try:
+            ranking_obj, created = CountryGlobalRanking.objects.update_or_create(
+                country_name=country,
+                defaults={
+                    'user_count': user_count,
+                    'consensus_album': album_map.get(consensus_album_id_int) if consensus_album_id_int is not None else None,
+                    'polarization_album': album_map.get(polarization_album_id_int) if polarization_album_id_int is not None else None,
+                    'analysis_data': analysis_data
+                }
+            )
+            print(f"✅ Ranking de {country} {'criado' if created else 'atualizado'}. Usuários: {user_count}")
+        except Exception as e:
+            logger.exception("Failed to update_or_create CountryGlobalRanking for %s: %s", country, e)
+            continue
 
         # ANALISE DE TRACKS POR PAÍS
-        member_track_rankings = TrackRanking.objects.filter(
-            user_id__in=country_user_ids
-        ).select_related('track')
+        member_track_rankings = TrackRanking.objects.filter(user_id__in=country_user_ids).select_related('track') if TrackRanking is not None else []
 
         track_positions = defaultdict(list)
         for ranking in member_track_rankings:
@@ -269,7 +363,6 @@ def calculate_global_ranking():
         global_consensus_track_id = None
         min_global_avg = float('inf')
 
-        # estrutura temporária: album_id (int) -> { "top_track_id": id, "tracks": { track_id: analysis } }
         track_analysis_by_album = defaultdict(lambda: {"top_track_id": None, "tracks": {}})
         polarization_track_id_by_album = {}
 
@@ -278,7 +371,10 @@ def calculate_global_ranking():
             if not track_obj:
                 continue
 
-            avg_position = statistics.mean(positions)
+            try:
+                avg_position = statistics.mean(positions)
+            except Exception:
+                avg_position = float('inf')
             votes = len(positions)
             try:
                 std_dev = statistics.stdev(positions) if votes > 1 else 0.0
@@ -286,27 +382,24 @@ def calculate_global_ranking():
                 std_dev = 0.0
 
             analysis = {
-                "track_title": track_obj.title,
-                "album_id": track_obj.album_id,
-                "avg_rank": round(avg_position, 2),
+                "track_title": getattr(track_obj, 'title', None),
+                "album_id": getattr(track_obj, 'album_id', None),
+                "avg_rank": round(avg_position, 2) if isinstance(avg_position, (int, float)) else None,
                 "std_dev_rank": round(std_dev, 2),
                 "votes": votes
             }
 
-            # consenso global (música com menor avg)
-            if avg_position < min_global_avg:
+            if isinstance(avg_position, (int, float)) and avg_position < min_global_avg:
                 min_global_avg = avg_position
                 global_consensus_track_id = track_id
 
-            album_id = analysis['album_id']
+            album_id = analysis["album_id"]
             track_analysis_by_album[album_id]["tracks"][track_id] = analysis
 
-            # top track por álbum (menor avg_rank)
             current_top = track_analysis_by_album[album_id]["top_track_id"]
-            if current_top is None or analysis['avg_rank'] < track_analysis_by_album[album_id]["tracks"][current_top]['avg_rank']:
+            if current_top is None or (analysis["avg_rank"] is not None and (track_analysis_by_album[album_id]["tracks"].get(current_top, {}).get('avg_rank', float('inf')) > analysis["avg_rank"])):
                 track_analysis_by_album[album_id]["top_track_id"] = track_id
 
-            # polarização por álbum (maior std_dev)
             current_polarized = polarization_track_id_by_album.get(album_id)
             cur_std = track_analysis_by_album[album_id]["tracks"].get(current_polarized, {}).get('std_dev_rank', -1)
             if (current_polarized is None) or (analysis['std_dev_rank'] > cur_std):
@@ -321,9 +414,8 @@ def calculate_global_ranking():
                 "tracks": tracks_serialized
             }
 
-        # atualiza ranking_obj.analysis_data com segurança (cópia)
         existing = ranking_obj.analysis_data or {}
-        existing = dict(existing)  # copia para evitar mutação inesperada
+        existing = dict(existing)
         existing['track_analysis_by_album'] = serialized_track_analysis
         existing['track_polarization_by_album'] = {str(k): v for k, v in polarization_track_id_by_album.items()}
         ranking_obj.analysis_data = existing
@@ -334,13 +426,8 @@ def calculate_global_ranking():
 
     print("--- CÁLCULO GLOBAL FINALIZADO ---")
 
-def _get_model(app_label: str, model_name: str):
-    try:
-        return apps.get_model(app_label, model_name)
-    except LookupError:
-        return None
 
-
+# ----- COERÊNCIA INTERNA DE GRUPO (CIGG) -----
 def calculate_group_internal_coherence(group) -> float:
     """
     CIGG (0..100). Implementação fixa para os testes:
@@ -350,12 +437,15 @@ def calculate_group_internal_coherence(group) -> float:
     - se houver múltiplos votos user+album, a última entrada (order by id) sobrescreve
     """
     try:
-        AlbumRanking = apps.get_model('rankings', 'AlbumRanking')
-        GroupRanking = apps.get_model('rankings', 'GroupRanking')
+        AlbumRankingLocal = apps.get_model('rankings', 'AlbumRanking')
+        GroupRankingLocal = apps.get_model('rankings', 'GroupRanking')
     except LookupError:
         return 0.0
 
-    matched_album_ids = list(GroupRanking.objects.filter(group=group).values_list('album_id', flat=True))
+    if GroupRankingLocal is None:
+        return 0.0
+
+    matched_album_ids = list(GroupRankingLocal.objects.filter(group=group).values_list('album_id', flat=True))
     if not matched_album_ids:
         return 0.0
 
@@ -363,8 +453,7 @@ def calculate_group_internal_coherence(group) -> float:
     if len(member_ids) < 2:
         return 0.0
 
-    # pegamos rows ordenadas por id para que a última entrada sobrescreva
-    rows = AlbumRanking.objects.filter(
+    rows = AlbumRankingLocal.objects.filter(
         user_id__in=member_ids,
         album_id__in=matched_album_ids
     ).order_by('id').values_list('user_id', 'album_id', 'position')
@@ -375,18 +464,15 @@ def calculate_group_internal_coherence(group) -> float:
             position = float(pos)
         except Exception:
             continue
-        # atribuição sobrescreve entradas anteriores com a mesma (user,album)
         rankings_by_album.setdefault(album_id, {})[user_id] = position
 
     MAX_DIFFERENCE = 5.0
 
     total_similarity = 0.0
     total_pairs = 0
-    debug = []
 
     for album_id, umap in rankings_by_album.items():
         if len(umap) < 2:
-            debug.append((album_id, "ignored_single_vote"))
             continue
 
         users = list(umap.keys())
@@ -403,15 +489,8 @@ def calculate_group_internal_coherence(group) -> float:
                 album_sum += similarity
                 album_comps += 1
 
-        debug.append((album_id, album_sum, album_comps))
         total_similarity += album_sum
         total_pairs += album_comps
-
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("CIGG debug group=%s matched_albums=%s", getattr(group, "id", group), matched_album_ids)
-        for d in debug:
-            logger.debug(" album debug: %s", d)
-        logger.debug(" total_similarity=%s total_pairs=%s MAX_DIFFERENCE=%s", total_similarity, total_pairs, MAX_DIFFERENCE)
 
     if total_pairs == 0:
         return 0.0
