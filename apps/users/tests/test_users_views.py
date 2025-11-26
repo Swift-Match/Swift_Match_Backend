@@ -12,6 +12,7 @@ class TestUserViews:
             "username": "integration_user",
             "email": "int@test.com",
             "password": "strongpassword123",
+            "country": "BR",
             "first_name": "Integration"
         }
         
