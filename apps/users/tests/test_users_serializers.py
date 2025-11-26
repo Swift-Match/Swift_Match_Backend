@@ -13,6 +13,7 @@ class TestUserSerializer:
             "username": "security_test",
             "email": "sec@test.com",
             "password": "plain_password_123",
+            "country": "BR",
             "first_name": "Sec"
         }
         serializer = UserRegistrationSerializer(data=data)
