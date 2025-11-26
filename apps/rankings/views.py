@@ -21,6 +21,33 @@ from .serializers import (
     TrackRankingSerializer
 )
 
+def _get_user_from_request(request):
+    """
+    Extrai o usuário autenticado a partir do token Bearer enviado pelo frontend.
+    Retorna None se o token for inválido ou ausente.
+    """
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+
+    token = auth_header.split(" ")[1]
+
+    from rest_framework_simplejwt.tokens import AccessToken
+
+    try:
+        access_token = AccessToken(token)
+        user_id = access_token["user_id"]
+
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+
+        return User.objects.get(id=user_id)
+
+    except Exception:
+        return None
+
+
 class EmptyResponseSerializer(serializers.Serializer):
     """
     Serializer placeholder para views que só usam GET ou retornam JSON customizado.
@@ -259,40 +286,41 @@ class GroupCompatibilityView(APIView):
     
 
 def check_friendship(user_a, user_b):
-    """Verifica se user_a e user_b são amigos (em qualquer direção) e se a amizade é ativa."""
+    """
+    Verifica se user_a e user_b são amigos (em qualquer direção) e se a amizade é ativa.
+    Retorna True também quando user_a == user_b (auto-comparação permitida).
+    """
     if user_a.id == user_b.id:
-        return True # Usuário é sempre "amigo" de si mesmo para comparação
-    
-    # Checa se existe uma amizade ativa (status=2) entre A e B ou B e A
+        return True
+
+    # usa os nomes reais dos campos do model Friendship: from_user / to_user
     return Friendship.objects.filter(
-        Q(user_a=user_a, user_b=user_b) | Q(user_a=user_b, user_b=user_a),
-        status=2 # 2 geralmente representa 'Aceita' ou 'Amigos'
+        (Q(from_user=user_a) & Q(to_user=user_b)) | (Q(from_user=user_b) & Q(to_user=user_a)),
+        status=2
     ).exists()
     
 
 class CompatibilityView(APIView):
     """
     Calcula a compatibilidade de ranking de álbuns entre o usuário logado e outro usuário.
-    Requer que os dois usuários sejam AMIGOS.
+    (REMOVIDA a checagem de amizade: qualquer usuário autenticado pode comparar)
     """
-    permission_classes = [IsAuthenticated]
-
+    permission_classes = [AllowAny]
     serializer_class = EmptyResponseSerializer
 
     def get(self, request, target_user_id):
-        user_a = request.user
+        # autenticação manual (mantida)
+        user_a = _get_user_from_request(request)
+        if not user_a:
+            return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
+
         try:
             user_b = User.objects.get(pk=target_user_id)
         except User.DoesNotExist:
             return Response({"error": "Usuário alvo não encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        # CHECAGEM DE AMIZADE
-        if not check_friendship(user_a, user_b):
-            return Response(
-                {"error": f"Você não pode comparar rankings com {user_b.username}. É necessário ser amigo."}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
+        # REMOVIDO: checagem de amizade
+
         # CHECAGEM DE COBERTURA DE RANKING (ÁLBUNS)
         user_a_has_rankings = AlbumRanking.objects.filter(user=user_a).exists()
         user_b_has_rankings = AlbumRanking.objects.filter(user=user_b).exists()
@@ -304,41 +332,35 @@ class CompatibilityView(APIView):
             if not user_b_has_rankings:
                 missing_user.append(user_b.username)
 
-            return Response(
-                {"error": f"Não é possível comparar. O(s) usuário(s) {', '.join(missing_user)} ainda não submeteram seu ranking de álbuns."},
-                status=status.HTTP_400_BAD_REQUEST 
-            )
+            return Response({"error": f"Não é possível comparar. O(s) usuário(s) {', '.join(missing_user)} ainda não submeteram seu ranking de álbuns."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Chama a função utilitária
+        # chama utilitário
         compatibility_percent, num_shared_albums, analysis_report = calculate_album_compatibility(user_a, user_b)
-        
-        # Como a função retorna a porcentagem, simplificamos o retorno aqui.
+
         if num_shared_albums == 0:
-             return Response(
-                {"compatibility_percent": 0, "message": "Nenhum álbum em comum rankeado."}, 
-                status=status.HTTP_200_OK
-            )
-            
+            return Response({"compatibility_percent": 0, "message": "Nenhum álbum em comum rankeado."}, status=status.HTTP_200_OK)
+
         return Response({
-        "target_user": user_b.username,
-        "shared_albums_count": num_shared_albums,
-        "compatibility_percent": compatibility_percent,
-        "matching_analysis": analysis_report # 🌟 Dados adicionais aqui
-    }, status=status.HTTP_200_OK)
+            "target_user": user_b.username,
+            "shared_albums_count": num_shared_albums,
+            "compatibility_percent": compatibility_percent,
+            "matching_analysis": analysis_report
+        }, status=status.HTTP_200_OK)
+
 
 class TrackCompatibilityView(APIView):
     """
-    Calcula a compatibilidade de ranking de MÚSICAS de um álbum específico
-    entre o usuário logado e outro usuário.
-    Requer que os dois usuários sejam AMIGOS.
+    Calcula a compatibilidade de ranking de músicas de um álbum específico entre o usuário logado e outro usuário.
+    (REMOVIDA a checagem de amizade)
     """
-    permission_classes = [IsAuthenticated]
-
+    permission_classes = [AllowAny]
     serializer_class = EmptyResponseSerializer
 
     def get(self, request, target_user_id, album_id):
-        user_a = request.user
-        
+        user_a = _get_user_from_request(request)
+        if not user_a:
+            return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
+
         try:
             user_b = User.objects.get(pk=target_user_id)
             album = Album.objects.get(pk=album_id)
@@ -347,15 +369,9 @@ class TrackCompatibilityView(APIView):
         except Album.DoesNotExist:
             return Response({"error": "Álbum não encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        # CHECAGEM DE AMIZADE
-        if not check_friendship(user_a, user_b):
-            return Response(
-                {"error": f"Você não pode comparar rankings de músicas com {user_b.username}. É necessário ser amigo."}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
+        # REMOVIDO: checagem de amizade
+
         # CHECAGEM DE COBERTURA DE RANKING (MÚSICAS DO ÁLBUM)
-        # Checa se eles rankearam QUALQUER música DENTRO DESTE ÁLBUM.
         user_a_has_rankings = TrackRanking.objects.filter(user=user_a, track__album=album).exists()
         user_b_has_rankings = TrackRanking.objects.filter(user=user_b, track__album=album).exists()
 
@@ -366,26 +382,21 @@ class TrackCompatibilityView(APIView):
             if not user_b_has_rankings:
                 missing_user.append(user_b.username)
 
-            return Response(
-                {"error": f"Não é possível comparar. O(s) usuário(s) {', '.join(missing_user)} ainda não submeteram seu ranking de músicas para o álbum '{album.title}'."},
-                status=status.HTTP_400_BAD_REQUEST 
-            )
+            return Response({"error": f"Não é possível comparar. O(s) usuário(s) {', '.join(missing_user)} ainda não submeteram seu ranking de músicas para o álbum '{album.title}'."}, status=status.HTTP_400_BAD_REQUEST)
 
         compatibility_percent, num_shared_tracks, analysis_report = calculate_track_compatibility(user_a, user_b, album)
 
         if num_shared_tracks == 0:
-             return Response(
-                {"compatibility_percent": 0, "message": f"Nenhuma música do álbum '{album.title}' rankeada por ambos."}, 
-                status=status.HTTP_200_OK
-            )
-            
+            return Response({"compatibility_percent": 0, "message": f"Nenhuma música do álbum '{album.title}' rankeada por ambos."}, status=status.HTTP_200_OK)
+
         return Response({
             "target_user": user_b.username,
             "album_title": album.title,
             "shared_tracks_count": num_shared_tracks,
             "compatibility_percent": compatibility_percent,
-            "matching_analysis": analysis_report 
+            "matching_analysis": analysis_report
         }, status=status.HTTP_200_OK)
+
 
 class GroupTrackCompatibilityView(APIView):
     """
@@ -577,3 +588,114 @@ class AlbumRankingView(APIView):
                 return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserRankedTitlesView(APIView):
+    """
+    Retorna:
+      - albums_ranked_via_albums: títulos de álbuns ranqueados via AlbumRanking
+      - albums_ranked_via_tracks: títulos de álbuns que possuem tracks ranqueadas (via TrackRanking -> track.album)
+      - ranked_track_titles: títulos das tracks ranqueadas
+      - combined_albums: união das duas listas acima (sem duplicatas), preservando ordem
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+
+        # 1) Álbuns ranqueados explicitamente (AlbumRanking)
+        albums_via_album = list(
+            AlbumRanking.objects
+            .filter(user=user, album__isnull=False)
+            .values_list('album__title', flat=True)
+            .distinct()
+        )
+
+        # 2) Álbums derivados das tracks ranqueadas (TrackRanking -> track.album)
+        albums_via_tracks = list(
+            TrackRanking.objects
+            .filter(user=user, track__isnull=False, track__album__isnull=False)
+            .values_list('track__album__title', flat=True)
+            .distinct()
+        )
+
+        # 3) Títulos de tracks ranqueadas (mantemos caso precise no front)
+        track_titles = list(
+            TrackRanking.objects
+            .filter(user=user, track__isnull=False)
+            .values_list('track__title', flat=True)
+            .distinct()
+        )
+
+        # 4) União preservando ordem: primeiro albums_via_album, depois albums_via_tracks sem duplicatas
+        combined = []
+        seen = set()
+        for t in albums_via_album + albums_via_tracks:
+            if t not in seen:
+                seen.add(t)
+                combined.append(t)
+
+        response_data = {
+            'albums_ranked_via_albums': albums_via_album,
+            'albums_ranked_via_tracks': albums_via_tracks,
+            'ranked_track_titles': track_titles,
+            'combined_albums': combined,
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+
+class OtherUserRankedTitlesView(APIView):
+    """
+    Retorna os títulos de álbuns e tracks ranqueados por um usuário específico,
+    identificado pelo ID (pk) na URL.
+    URL: /api/rankings/user/<int:pk>/ranked-titles/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk, *args, **kwargs):
+        # Busca o usuário pelo ID (pk) da URL. Retorna 404 se não encontrado.
+        target_user = get_object_or_404(User, pk=pk)
+        
+        # O restante da lógica é idêntica, mas usando target_user em vez de request.user
+        
+        # 1) Álbuns ranqueados explicitamente (AlbumRanking)
+        albums_via_album = list(
+            AlbumRanking.objects
+            .filter(user=target_user, album__isnull=False)
+            .values_list('album__title', flat=True)
+            .distinct()
+        )
+
+        # 2) Álbums derivados das tracks ranqueadas (TrackRanking -> track.album)
+        albums_via_tracks = list(
+            TrackRanking.objects
+            .filter(user=target_user, track__isnull=False, track__album__isnull=False)
+            .values_list('track__album__title', flat=True)
+            .distinct()
+        )
+
+        # 3) Títulos de tracks ranqueadas
+        track_titles = list(
+            TrackRanking.objects
+            .filter(user=target_user, track__isnull=False)
+            .values_list('track__title', flat=True)
+            .distinct()
+        )
+
+        # 4) União preservando ordem
+        combined = []
+        seen = set()
+        for t in albums_via_album + albums_via_tracks:
+            if t not in seen:
+                seen.add(t)
+                combined.append(t)
+
+        response_data = {
+            'albums_ranked_via_albums': albums_via_album,
+            'albums_ranked_via_tracks': albums_via_tracks,
+            'ranked_track_titles': track_titles,
+            'combined_albums': combined,
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
