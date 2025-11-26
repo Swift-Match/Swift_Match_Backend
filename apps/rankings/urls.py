@@ -10,6 +10,8 @@ from .views import (
     GlobalRankingListView,
     TrackCompatibilityView,
     GroupRankingViewSet,
+    UserRankedTitlesView,
+    OtherUserRankedTitlesView
 )
 
 # 1. Configurar o Router para o ViewSet
@@ -40,8 +42,8 @@ urlpatterns = [
     # Rotas de Ranking Global
     path('global/', GlobalRankingListView.as_view(), name='global-ranking-list'),
     
-    # 2. Inclusão das rotas do ViewSet (Substitui a linha errada)
+    path('user/ranked-titles/', UserRankedTitlesView.as_view(), name='user-ranked-titles'),
+
+    path('user/<int:pk>/ranked-titles/', OtherUserRankedTitlesView.as_view(), name='other-user-ranked-titles'),
     path('', include(router.urls)), 
-    # Observação: Colocando o include no path vazio (''), garante que todas as URLs do ViewSet
-    # comecem a partir do prefixo definido no config/urls.py (ex: /api/rankings/group_rankings/)
 ]
