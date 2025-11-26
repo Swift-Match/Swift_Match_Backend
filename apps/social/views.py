@@ -274,3 +274,114 @@ class FriendListView(APIView):
         serializer = FriendSerializer(friends, many=True)
         
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+
+class UserSearchView(generics.ListAPIView):
+    """
+    GET: Pesquisa usuários pelo username.
+    URL de exemplo: /api/social/users/search/?query=termo
+    """
+    serializer_class = FriendSerializer # Reutilizamos este serializer para retornar o usuário
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # 1. Obtém o termo de busca da query string (URL)
+        search_term = self.request.query_params.get('query', '')
+        
+        # 2. Ignora o usuário logado na pesquisa
+        user = self.request.user
+
+        if search_term:
+            # Filtra usuários cujo username contenha o termo de busca (case-insensitive)
+            # e exclui o próprio usuário logado.
+            queryset = User.objects.filter(
+                Q(username__icontains=search_term) | Q(email__icontains=search_term)
+            ).exclude(pk=user.pk).distinct()
+            
+            # Limita a busca a, por exemplo, 10 resultados para performance
+            return queryset[:10] 
+        
+        # Se não houver termo de busca, retorna um queryset vazio para evitar listar todos
+        return User.objects.none()
+
+class SendFriendshipRequestToUserView(APIView):
+    """
+    POST: Envia um pedido de amizade do usuário logado para um usuário específico
+    cujo ID (pk) é passado na URL (útil para perfis 'visitante').
+    URL Exemplo: /api/social/users/123/request-friendship/
+    """
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_id='social_send_friendship_request_by_id',
+        request_body=EmptyResponseSerializer, # Não requer corpo (o id está na URL)
+        responses={
+            201: 'Pedido de amizade enviado com sucesso.',
+            200: 'Pedido de amizade aceito automaticamente.', # Adicionado para reciprocidade
+            400: 'Erro de validação (já são amigos, pedido pendente, etc.)',
+            404: 'Usuário destinatário não encontrado.'
+        }
+    )
+    def post(self, request, pk):
+        sender = request.user
+        
+        # 1. Busca o usuário destinatário (Receiver)
+        try:
+            receiver = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Usuário destinatário não encontrado."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 2. Pre-validações: Não pode ser para si mesmo
+        if sender.pk == receiver.pk:
+            return Response(
+                {"error": "Você não pode enviar um pedido de amizade para si mesmo."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # 3. Verifica se já existe uma amizade (Aceita, Pendente ou Reversa)
+        existing_friendship = Friendship.objects.filter(
+            Q(from_user=sender, to_user=receiver) | Q(from_user=receiver, to_user=sender)
+        ).first()
+
+        if existing_friendship:
+            if existing_friendship.status == 'accepted':
+                return Response(
+                    {"error": f"Vocês já são amigos de {receiver.username}."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            elif existing_friendship.status == 'pending':
+                # Se for um pedido pendente (de A para B), não envia de novo
+                if existing_friendship.from_user == sender:
+                    return Response(
+                        {"error": "Um pedido de amizade para este usuário já está pendente."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                else: # Se o outro usuário (Receiver) enviou o pedido (B para A), ACEITA AUTOMATICAMENTE
+                    existing_friendship.status = 'accepted'
+                    existing_friendship.save()
+                    return Response(
+                        {"message": f"Pedido de amizade aceito automaticamente! Vocês agora são amigos de {receiver.username}."},
+                        status=status.HTTP_200_OK # 200 OK porque a ação foi concluída
+                    )
+            # Regra de Negócio: Se for 'rejected', podemos permitir um novo envio.
+            # Se você não quiser que o usuário possa enviar novamente após rejeição, adicione o status 'rejected' aqui.
+
+        # 4. Cria o novo pedido de amizade
+        try:
+            Friendship.objects.create(
+                from_user=sender,
+                to_user=receiver,
+                status='pending'
+            )
+            return Response(
+                {"message": f"Pedido de amizade enviado para {receiver.username}."},
+                status=status.HTTP_201_CREATED
+            )
+        except Exception:
+             return Response(
+                {"error": "Erro interno ao criar pedido de amizade."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
