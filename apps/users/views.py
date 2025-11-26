@@ -66,3 +66,32 @@ class UserFirstLoginView(generics.RetrieveAPIView):
 
     def get_object(self):
         return self.request.user
+    
+class UserThemeRetrieveView(generics.RetrieveAPIView):
+    """
+    Retorna apenas o tema (tema) do usuário logado.
+    """
+    serializer_class = UserThemeSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        """Retorna o objeto User autenticado."""
+        return self.request.user
+    
+class OtherUserProfileView(generics.RetrieveAPIView):
+    """
+    Retorna os detalhes do perfil de outro usuário, usando o ID (pk) na URL.
+    Exemplo de URL: /api/users/123/
+    """
+    serializer_class = UserRegistrationSerializer
+    permission_classes = [IsAuthenticated] # Mantenha a restrição de autenticação
+    
+    # Define o queryset para que o DRF possa buscar o objeto usando o 'pk' da URL
+    queryset = User.objects.all()
+
+    # O método get_object() padrão do RetrieveAPIView já usa a primary key (pk)
+    # se o queryset estiver definido e a URL contiver o '<pk>'.
+    # Não precisamos reescrevê-lo.
+
+def healthcheck(request):
+    return JsonResponse({"status": "ok"})
