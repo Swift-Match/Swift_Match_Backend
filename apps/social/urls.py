@@ -6,7 +6,9 @@ from .views import (
     FriendshipRequestListView,
     FriendshipManageView,
     GroupInviteManageView,
-    FriendListView
+    FriendListView,
+    UserSearchView,
+    SendFriendshipRequestToUserView
 )
 
 
@@ -33,6 +35,9 @@ urlpatterns = [
         name='group-invite-manage'
     ),
 
-    # Rota para /api/social/friends/ (ou similar, dependendo do seu config/urls.py)
     path('friends/', FriendListView.as_view(), name='friend-list'),
+
+    path('users/<int:pk>/request-friendship/', SendFriendshipRequestToUserView.as_view(), name='send-friendship-request-to-user'),
+
+    path('users/search/', UserSearchView.as_view(), name='user-search'),
 ]
