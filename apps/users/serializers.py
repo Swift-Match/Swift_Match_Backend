@@ -31,12 +31,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
             tema = validated_data.pop('tema', User.TEMA_CHOICES[-1][0])
+            country = validated_data.pop('country')
             user = User.objects.create_user(
                 username=validated_data['username'],
                 email=validated_data['email'],
                 password=validated_data['password'],
                 first_name=validated_data.get('first_name', ''),
-                tema=tema
+                tema=tema,
+                country=country
             )
             return user
     
@@ -60,7 +62,7 @@ class UserPublicSerializer(serializers.ModelSerializer):
         model = User
         # Inclua apenas campos não-sensíveis que você precisa para exibir 
         # o remetente/destinatário do convite.
-        fields = ['id', 'username', 'first_name', 'last_name', 'profile_picture_url'] 
+        fields = ['id', 'username', 'first_name', 'profile_picture_url'] 
         # Ajuste os campos conforme seu modelo CustomUser
 
 class UserThemeSerializer(serializers.ModelSerializer):
