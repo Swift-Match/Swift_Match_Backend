@@ -20,4 +20,6 @@ urlpatterns = [
     path('api/rankings/', include('apps.rankings.urls')),
     path('api/social/', include('apps.social.urls')),
     path('api/albums/', include('apps.albums.urls')),
+    path('api/tracks/', include('apps.tracks.urls')),
+
 ]
