@@ -6,9 +6,10 @@ services:
     container_name: swift_db
     restart: always
     environment:
-      POSTGRES_DB: swift_match_db
-      POSTGRES_USER: swift_admin
-      POSTGRES_PASSWORD: swift_pass
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
     ports:
       - "5432:5432"
     volumes:
@@ -19,8 +20,9 @@ services:
     container_name: swift_pgadmin
     restart: always
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@swift.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+
     ports:
       - "5050:80"
     depends_on:
