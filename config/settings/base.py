@@ -36,9 +36,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # CORS DEVE SER UM DOS PRIMEIROS para funcionar antes que o Django rejeite algo
+    'corsheaders.middleware.CorsMiddleware', 
     "django.contrib.sessions.middleware.SessionMiddleware",
-    'corsheaders.middleware.CorsMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
     "django.middleware.common.CommonMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",     
     "django.contrib.messages.middleware.MessageMiddleware",         
@@ -93,8 +93,8 @@ REST_FRAMEWORK.update({
 })
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), # Token expira em 60 min
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),   # Token de refresh dura 1 dia
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "ROTATE_REFRESH_TOKENS": False,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
@@ -102,7 +102,6 @@ SIMPLE_JWT = {
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
 }
-
 
 CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
@@ -121,26 +120,19 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = False 
+CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  
-    "http://127.0.0.1:5173",  
+    "http://127.0.0.1:5173",
+    "https://swiftmatch-4zx0yaqg3-natalias-projects-1917c8f4.vercel.app",
 ]
 
-CSRF_TRUSTED_ORIGINS = []
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+]
 
-CORS_ALLOW_CREDENTIALS = True
-
-
-VERCEL_FRONTEND_URL = os.getenv("VERCEL_FRONTEND_URL")
-RENDER_URL = os.getenv("RENDER_EXTERNAL_HOSTNAME") 
-
-if RENDER_URL or VERCEL_FRONTEND_URL:
-    
-    if RENDER_URL:
-        CORS_ALLOWED_ORIGINS.append(f"https://{RENDER_URL}")
-        CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_URL}")
-
-    if VERCEL_FRONTEND_URL:
-        CORS_ALLOWED_ORIGINS.append(VERCEL_FRONTEND_URL)
-        CSRF_TRUSTED_ORIGINS.append(VERCEL_FRONTEND_URL)
+CSRF_TRUSTED_ORIGINS = [
+    "https://swiftmatch-4zx0yaqg3-natalias-projects-1917c8f4.vercel.app",
+    "https://swift-match-backend.onrender.com",
+]
