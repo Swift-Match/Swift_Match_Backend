@@ -20,4 +20,4 @@ RUN chmod +x /app/entrypoint.sh /app/run_prod.sh /app/run_web.sh
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:$PORT"]
+CMD gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
