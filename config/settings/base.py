@@ -3,6 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from datetime import timedelta
 from celery.schedules import crontab
+import dj_database_url
 
 load_dotenv()
 
@@ -46,14 +47,10 @@ MIDDLEWARE = [
 ROOT_URLCONF = "config.urls"
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "swift_match_db"),
-        "USER": os.getenv("POSTGRES_USER", "swift_admin"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "swift_pass"),
-        "HOST": os.getenv("POSTGRES_HOST", "db"),
-        "PORT": os.getenv("POSTGRES_PORT", "5432"),
-    }
+    'default': dj_database_url.config(
+        default=os.getenv('DATABASE_URL', 'sqlite:///db.sqlite3'),
+        conn_max_age=600,
+    )
 }
 
 STATIC_URL = "/static/"
@@ -107,8 +104,8 @@ SIMPLE_JWT = {
 }
 
 
-CELERY_BROKER_URL = 'redis://swift_redis:6379/0'
-CELERY_RESULT_BACKEND = 'redis://swift_redis:6379/0'
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'

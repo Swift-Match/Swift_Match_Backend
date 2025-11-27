@@ -8,3 +8,4 @@ celery
 redis
 django-celery-beat
 django-cors-headers
+dj-database-url
