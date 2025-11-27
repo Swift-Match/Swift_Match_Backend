@@ -113,9 +113,7 @@ CELERY_TIMEZONE = 'America/Sao_Paulo'
 
 CELERY_BEAT_SCHEDULE = {
     'update-global-ranking-daily': {
-        # O caminho para a função que criamos
         'task': 'apps.rankings.tasks.run_global_ranking_calculation', 
-        # Roda todos os dias à meia-noite (00:00)
         'schedule': crontab(minute=0, hour=0), 
         'args': (),
         'options': {'queue': 'default'}
@@ -127,16 +125,22 @@ CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  
     "http://127.0.0.1:5173",  
-    
-    "https://swiftmatch-4zx0yaqg3-natalias-projects-1917c8f4.vercel.app",
-    
-    "https://swift-match-backend.onrender.com", 
 ]
+
+CSRF_TRUSTED_ORIGINS = []
 
 CORS_ALLOW_CREDENTIALS = True
 
-CSRF_TRUSTED_ORIGINS = [
-    "https://swiftmatch-4zx0yaqg3-natalias-projects-1917c8f4.vercel.app",
-    "https://swift-match-backend.onrender.com",
-]
 
+VERCEL_FRONTEND_URL = os.getenv("VERCEL_FRONTEND_URL")
+RENDER_URL = os.getenv("RENDER_EXTERNAL_HOSTNAME") 
+
+if RENDER_URL or VERCEL_FRONTEND_URL:
+    
+    if RENDER_URL:
+        CORS_ALLOWED_ORIGINS.append(f"https://{RENDER_URL}")
+        CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_URL}")
+
+    if VERCEL_FRONTEND_URL:
+        CORS_ALLOWED_ORIGINS.append(VERCEL_FRONTEND_URL)
+        CSRF_TRUSTED_ORIGINS.append(VERCEL_FRONTEND_URL)
