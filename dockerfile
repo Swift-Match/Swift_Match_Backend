@@ -16,4 +16,6 @@ RUN apt-get update && apt-get install -y wget && \
 
 COPY . /app
 
+RUN chmod +x /app/entrypoint.sh /app/run_prod.sh /app/run_web.sh
+
 ENTRYPOINT ["/app/entrypoint.sh"]
