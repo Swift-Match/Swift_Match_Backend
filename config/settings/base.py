@@ -41,7 +41,7 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     "django.middleware.common.CommonMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",     
-    "django.contrib.messages.middleware.MessageMiddleware",        
+    "django.contrib.messages.middleware.MessageMiddleware",         
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -124,12 +124,19 @@ CELERY_BEAT_SCHEDULE = {
 
 CORS_ALLOW_ALL_ORIGINS = False 
 
-# Lista de origens permitidas para acessar o Backend.
-# O Frontend Vite está em localhost:5173.
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # SEU FRONTEND VITE
-    "http://127.0.0.1:5173",  # Alternativa de localhost
+    "http://localhost:5173",  
+    "http://127.0.0.1:5173",  
+    
+    "https://swiftmatch-4zx0yaqg3-natalias-projects-1917c8f4.vercel.app",
+    
+    "https://swift-match-backend.onrender.com", 
 ]
 
-# Permite que requisições incluam credenciais (necessário para JWT, se você usar cookies)
 CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://swiftmatch-4zx0yaqg3-natalias-projects-1917c8f4.vercel.app",
+    "https://swift-match-backend.onrender.com",
+]
+
