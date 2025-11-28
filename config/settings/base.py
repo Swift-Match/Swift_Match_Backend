@@ -10,7 +10,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-secret-key")
-DEBUG = False
+DEBUG = False 
 
 ALLOWED_HOSTS = ["*"]
 
@@ -36,7 +36,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    # CORS DEVE SER UM DOS PRIMEIROS para funcionar antes que o Django rejeite algo
     'corsheaders.middleware.CorsMiddleware', 
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -71,7 +70,7 @@ SPECTACULAR_SETTINGS = {
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],  
+        "DIRS": [BASE_DIR / "templates"],     
         "APP_DIRS": True, 
         "OPTIONS": {
             "context_processors": [
@@ -123,9 +122,12 @@ CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  
+    "http://localhost:5173",    
     "http://127.0.0.1:5173",
-    "https://swiftmatch-4zx0yaqg3-natalias-projects-1917c8f4.vercel.app",
+    
+    "https://swift-match-frontend.vercel.app", 
+    
+    "https://swift-match-frontend-8caxfadsy-natalias-projects-1917c8f4.vercel.app",
 ]
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
@@ -133,6 +135,10 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://swiftmatch-4zx0yaqg3-natalias-projects-1917c8f4.vercel.app",
-    "https://swift-match-backend.onrender.com",
+    "https://swift-match-backend.onrender.com", 
+    
+    "https://swift-match-frontend.vercel.app",
+    
+    "https://swift-match-frontend-8caxfadsy-natalias-projects-1917c8f4.vercel.app",
+    
 ]
