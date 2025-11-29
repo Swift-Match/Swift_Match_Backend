@@ -13,4 +13,4 @@ class TestUserModel:
         """Teste unitário: verifica se o tema padrão é aplicado corretamente"""
         user = create_user(username="midnights_lover", password="123")
         assert user.tema == "MIDNIGHTS"
-        assert user.country == ""  # Verifica o default do país
+        assert user.country == ""  

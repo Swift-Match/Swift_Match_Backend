@@ -1,15 +1,13 @@
 import pytest
-from django.db import transaction # <--- IMPORTANTE
+from django.db import transaction 
 from django.db.utils import IntegrityError
 from django.utils import timezone
 
 from apps.social.models import Friendship, Group, GroupMembership, GroupInvite
 from apps.users.models import User
 
-# Marca todos os testes neste módulo para usar o banco de dados
 pytestmark = pytest.mark.django_db
 
-# --- FIXTURE ESSENCIAL ---
 @pytest.fixture
 def user_factory(django_user_model):
     """Cria usuários dinamicamente para os testes."""
@@ -17,9 +15,7 @@ def user_factory(django_user_model):
         return django_user_model.objects.create_user(**kwargs)
     return create_user
 
-# ======================================
-# Testes do Modelo Friendship
-# ======================================
+
 
 class TestFriendshipModel:
     """Testa o modelo Friendship (Pedido de Amizade)."""
@@ -51,23 +47,15 @@ class TestFriendshipModel:
         user1 = user_factory(username='Alice', password='123')
         user2 = user_factory(username='Bob', password='123')
         
-        # Cria o primeiro pedido
         Friendship.objects.create(from_user=user1, to_user=user2)
         
-        # CORREÇÃO: Use transaction.atomic() para isolar a falha
-        # Isso impede que a transação principal seja abortada pelo erro de integridade
         with pytest.raises(IntegrityError):
             with transaction.atomic():
                 Friendship.objects.create(from_user=user1, to_user=user2)
             
-        # Agora podemos continuar usando o banco na mesma transação de teste
-        # A ordem inversa é permitida pelo banco
         Friendship.objects.create(from_user=user2, to_user=user1)
         assert Friendship.objects.count() == 2
 
-# ======================================
-# Testes do Modelo Group
-# ======================================
 
 class TestGroupModel:
     """Testa o modelo Group (Grupo de Amigos)."""
@@ -84,12 +72,9 @@ class TestGroupModel:
         Group.objects.create(name='Grupo Beta', owner=owner)
         
         with pytest.raises(IntegrityError):
-            with transaction.atomic(): # CORREÇÃO
+            with transaction.atomic():
                 Group.objects.create(name='Grupo Beta', owner=owner)
 
-# ======================================
-# Testes do Modelo GroupMembership
-# ======================================
 
 class TestGroupMembershipModel:
     
@@ -119,12 +104,9 @@ class TestGroupMembershipModel:
         GroupMembership.objects.create(user=member1, group=group)
         
         with pytest.raises(IntegrityError):
-            with transaction.atomic(): # CORREÇÃO
+            with transaction.atomic(): 
                 GroupMembership.objects.create(user=member1, group=group)
 
-# ======================================
-# Testes do Modelo GroupInvite
-# ======================================
 
 class TestGroupInviteModel:
     
@@ -152,7 +134,6 @@ class TestGroupInviteModel:
         )
         assert invite_accepted.status == 'ACCEPTED'
         
-        # Cria um novo receiver para testar outro convite no mesmo grupo
         receiver2 = User.objects.create_user(username='Receiver2', email='r2@test.com', password='123')
         invite_rejected = GroupInvite.objects.create(
             sender=sender, group=group, receiver=receiver2, status='REJECTED'
@@ -163,24 +144,20 @@ class TestGroupInviteModel:
         """Testa unique_together com PENDING."""
         sender, receiver, group = setup_group_invite
         
-        # Primeiro convite pendente
         GroupInvite.objects.create(
             sender=sender, group=group, receiver=receiver, status='PENDING'
         )
         
-        # Tenta criar um segundo convite pendente (deve falhar e ser capturado atomicamente)
         with pytest.raises(IntegrityError):
-            with transaction.atomic(): # CORREÇÃO
+            with transaction.atomic(): 
                 GroupInvite.objects.create(
                     sender=sender, group=group, receiver=receiver, status='PENDING'
                 )
             
-        # Altera o status do primeiro para 'REJECTED'
         invite = GroupInvite.objects.get(receiver=receiver, group=group)
         invite.status = 'REJECTED'
         invite.save()
         
-        # Agora deve permitir criar um novo convite PENDING
         GroupInvite.objects.create(
             sender=sender, group=group, receiver=receiver, status='PENDING'
         )

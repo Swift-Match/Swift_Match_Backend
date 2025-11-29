@@ -28,7 +28,6 @@ services:
     depends_on:
       - db
 
-  # Broker para Celery
   redis:
     image: redis:7-alpine
     container_name: swift_redis
@@ -40,7 +39,6 @@ services:
   web:
     build: .
     container_name: swift_backend
-    # 🌟 Usa o ENTRYPOINT para esperar o DB e, em seguida, executa o script de inicialização do web.
     entrypoint: /app/entrypoint.sh
     command: /app/run_web.sh 
     volumes:
@@ -54,7 +52,6 @@ services:
   celery_worker: 
     build: .
     container_name: swift_celery_worker
-    # 🌟 Usa o ENTRYPOINT para esperar o DB e, em seguida, executa o comando Celery.
     entrypoint: /app/entrypoint.sh
     command: celery -A config worker -l info 
     volumes:
@@ -64,8 +61,6 @@ services:
       - redis
       - web
     environment:
-      # Use o caminho de importação correto para o arquivo de settings.
-      # Se as configurações estão em 'config/settings/base.py':
       - DJANGO_SETTINGS_MODULE=config.settings.base
     
 

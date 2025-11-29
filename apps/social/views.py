@@ -30,13 +30,10 @@ class GroupListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Retorna grupos onde o usuário logado é membro
         return Group.objects.filter(members=self.request.user).distinct()
 
     def perform_create(self, serializer):
-        # 1. Define o usuário logado como dono
         group = serializer.save(owner=self.request.user)
-        # 2. Adiciona o dono como primeiro membro e administrador
         GroupMembership.objects.create(
             group=group, 
             user=self.request.user, 
@@ -54,7 +51,6 @@ class GroupDetailView(generics.RetrieveAPIView):
 
     def get_object(self):
         obj = super().get_object()
-        # Garante que apenas membros do grupo possam ver os detalhes
         if not obj.members.filter(pk=self.request.user.id).exists():
             self.permission_denied(
                 self.request, 
@@ -75,7 +71,6 @@ class GroupAddMemberView(GenericAPIView):
             GroupMembership, group=group, user=request.user
         )
 
-        # 1. Checa se o usuário logado é administrador
         if not current_user_membership.is_admin:
             return Response(
                 {"error": "Você precisa ser administrador para adicionar membros."},
@@ -87,11 +82,10 @@ class GroupAddMemberView(GenericAPIView):
         
         user_to_add = serializer.validated_data['user_id']
         
-        # 2. Adiciona o novo membro
         GroupMembership.objects.create(
             group=group,
             user=user_to_add,
-            is_admin=False # Membro novo não é admin por padrão
+            is_admin=False 
         )
 
         return Response(
@@ -111,14 +105,12 @@ class FriendshipRequestListView(generics.ListCreateAPIView):
     swagger_fake_method = 'post'
 
     def get_queryset(self):
-        # Lista pedidos pendentes que o usuário logado recebeu
         return Friendship.objects.filter(
             to_user=self.request.user, 
             status='pending'
         ).order_by('-created_at')
 
     def perform_create(self, serializer):
-        # Define o usuário logado como o remetente
         serializer.save(from_user=self.request.user, status='pending')
 
     @swagger_auto_schema(
@@ -128,7 +120,6 @@ class FriendshipRequestListView(generics.ListCreateAPIView):
     )
 
     def post(self, request, *args, **kwargs):
-        # Chama a função de criação herdada do ListCreateAPIView
         return self.create(request, *args, **kwargs)
 
 class EmptySerializer(serializers.Serializer):
@@ -151,7 +142,6 @@ class FriendshipManageView(APIView):
     )
 
     def post(self, request, pk, action):
-        # Encontra o pedido pelo ID e verifica se ele foi enviado PARA o usuário logado
         friendship = get_object_or_404(
             Friendship, 
             pk=pk, 
@@ -188,23 +178,20 @@ class GroupInviteManageView(APIView):
 
     @swagger_auto_schema(
         operation_id='social_group_invite_manage',
-        request_body=None, # Não requer corpo de requisição
+        request_body=None, 
         responses={
             200: "Mensagem de sucesso (convite aceito/rejeitado).",
             400: "Ação inválida ou convite não encontrado/expirado."
         }
     )
     def post(self, request, pk, action):
-        # O decorador @transaction.atomic garante que se qualquer etapa falhar, nada é salvo no DB.
         with transaction.atomic():
             
-            # 1. Busca e valida o convite
             try:
                 invite = GroupInvite.objects.get(
                     pk=pk, 
-                    # Apenas o usuário que recebeu o convite pode gerenciá-lo
                     receiver=request.user, 
-                    status='PENDING' # Deve estar pendente
+                    status='PENDING' 
                 )
             except GroupInvite.DoesNotExist:
                 return Response(
@@ -213,20 +200,13 @@ class GroupInviteManageView(APIView):
                 )
 
             if action == 'accept':
-                # 2. Adiciona o usuário ao grupo
                 
-                # O GroupMembership é criado automaticamente via M2M, mas 
-                # como você tem um 'through' model (GroupMembership), 
-                # você deve criar a instância 'GroupMembership' explicitamente ou usar add()
-                
-                # Usando add() (método mais simples, garante que não haja duplicidade)
                 invite.group.members.add(request.user) 
                 
                 invite.status = 'ACCEPTED'
                 message = f"Você aceitou o convite e entrou no grupo '{invite.group.name}'!"
                 
             elif action == 'reject':
-                # 3. Rejeita o convite
                 invite.status = 'REJECTED'
                 message = "Você rejeitou o convite."
                 
@@ -236,7 +216,6 @@ class GroupInviteManageView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # 4. Salva a mudança de status no convite
             invite.save()
             
             return Response({"message": message}, status=status.HTTP_200_OK)
@@ -251,26 +230,20 @@ class FriendListView(APIView):
     def get(self, request):
         user = request.user
         
-        # 1. Busca amizades ativas onde o usuário logado é from_user OU to_user
-        # O status deve ser a string 'accepted', não o inteiro 2.
         active_friendships = Friendship.objects.filter(
             Q(from_user=user) | Q(to_user=user), 
-            status='accepted' # CORREÇÃO: Usar a string literal 'accepted'
-        ).select_related('from_user', 'to_user') # CORREÇÃO: Usar from_user e to_user
+            status='accepted' 
+        ).select_related('from_user', 'to_user') 
         
         friend_ids = []
         for friendship in active_friendships:
-            # Adiciona o ID do outro usuário (o amigo)
-            # CORREÇÃO: Checar from_user e to_user
             if friendship.from_user.id == user.id:
                 friend_ids.append(friendship.to_user.id)
             else:
                 friend_ids.append(friendship.from_user.id)
 
-        # 2. Busca os objetos User dos IDs encontrados
         friends = User.objects.filter(id__in=friend_ids)
         
-        # 3. Serializa e retorna
         serializer = FriendSerializer(friends, many=True)
         
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -281,27 +254,21 @@ class UserSearchView(generics.ListAPIView):
     GET: Pesquisa usuários pelo username.
     URL de exemplo: /api/social/users/search/?query=termo
     """
-    serializer_class = FriendSerializer # Reutilizamos este serializer para retornar o usuário
+    serializer_class = FriendSerializer 
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # 1. Obtém o termo de busca da query string (URL)
         search_term = self.request.query_params.get('query', '')
         
-        # 2. Ignora o usuário logado na pesquisa
         user = self.request.user
 
         if search_term:
-            # Filtra usuários cujo username contenha o termo de busca (case-insensitive)
-            # e exclui o próprio usuário logado.
             queryset = User.objects.filter(
                 Q(username__icontains=search_term) | Q(email__icontains=search_term)
             ).exclude(pk=user.pk).distinct()
             
-            # Limita a busca a, por exemplo, 10 resultados para performance
             return queryset[:10] 
         
-        # Se não houver termo de busca, retorna um queryset vazio para evitar listar todos
         return User.objects.none()
 
 class SendFriendshipRequestToUserView(APIView):
@@ -314,10 +281,10 @@ class SendFriendshipRequestToUserView(APIView):
 
     @swagger_auto_schema(
         operation_id='social_send_friendship_request_by_id',
-        request_body=EmptyResponseSerializer, # Não requer corpo (o id está na URL)
+        request_body=EmptyResponseSerializer, 
         responses={
             201: 'Pedido de amizade enviado com sucesso.',
-            200: 'Pedido de amizade aceito automaticamente.', # Adicionado para reciprocidade
+            200: 'Pedido de amizade aceito automaticamente.', 
             400: 'Erro de validação (já são amigos, pedido pendente, etc.)',
             404: 'Usuário destinatário não encontrado.'
         }
@@ -325,7 +292,6 @@ class SendFriendshipRequestToUserView(APIView):
     def post(self, request, pk):
         sender = request.user
         
-        # 1. Busca o usuário destinatário (Receiver)
         try:
             receiver = User.objects.get(pk=pk)
         except User.DoesNotExist:
@@ -334,14 +300,12 @@ class SendFriendshipRequestToUserView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # 2. Pre-validações: Não pode ser para si mesmo
         if sender.pk == receiver.pk:
             return Response(
                 {"error": "Você não pode enviar um pedido de amizade para si mesmo."},
                 status=status.HTTP_400_BAD_REQUEST
             )
             
-        # 3. Verifica se já existe uma amizade (Aceita, Pendente ou Reversa)
         existing_friendship = Friendship.objects.filter(
             Q(from_user=sender, to_user=receiver) | Q(from_user=receiver, to_user=sender)
         ).first()
@@ -353,23 +317,19 @@ class SendFriendshipRequestToUserView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             elif existing_friendship.status == 'pending':
-                # Se for um pedido pendente (de A para B), não envia de novo
                 if existing_friendship.from_user == sender:
                     return Response(
                         {"error": "Um pedido de amizade para este usuário já está pendente."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-                else: # Se o outro usuário (Receiver) enviou o pedido (B para A), ACEITA AUTOMATICAMENTE
+                else:
                     existing_friendship.status = 'accepted'
                     existing_friendship.save()
                     return Response(
                         {"message": f"Pedido de amizade aceito automaticamente! Vocês agora são amigos de {receiver.username}."},
-                        status=status.HTTP_200_OK # 200 OK porque a ação foi concluída
+                        status=status.HTTP_200_OK 
                     )
-            # Regra de Negócio: Se for 'rejected', podemos permitir um novo envio.
-            # Se você não quiser que o usuário possa enviar novamente após rejeição, adicione o status 'rejected' aqui.
 
-        # 4. Cria o novo pedido de amizade
         try:
             Friendship.objects.create(
                 from_user=sender,

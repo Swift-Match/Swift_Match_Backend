@@ -4,14 +4,13 @@ from apps.social.models import Friendship, GroupMembership
 from django.db.models import Q
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    # O campo password precisa ser write_only para não aparecer na resposta
     password = serializers.CharField(write_only=True)
     friends_count = serializers.SerializerMethodField()
     groups_count = serializers.SerializerMethodField()
 
     tema = serializers.ChoiceField(
         choices=User.TEMA_CHOICES,
-        default=User.TEMA_CHOICES[-1][0],  # "MIDNIGHTS"
+        default=User.TEMA_CHOICES[-1][0],  
         required=False
     )
 
@@ -43,14 +42,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             return user
     
     def get_friends_count(self, obj) -> int:
-        # Contagem de amizades aceitas (onde o usuário é from_user OU to_user)
         return Friendship.objects.filter(
             Q(from_user=obj) | Q(to_user=obj),
             status='accepted'
         ).count()
 
     def get_groups_count(self, obj) -> int:
-        # Contagem de grupos onde o usuário é membro
         return GroupMembership.objects.filter(user=obj).count()
     
 
@@ -60,10 +57,7 @@ class UserPublicSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = User
-        # Inclua apenas campos não-sensíveis que você precisa para exibir 
-        # o remetente/destinatário do convite.
         fields = ['id', 'username', 'first_name', 'profile_picture_url'] 
-        # Ajuste os campos conforme seu modelo CustomUser
 
 class UserThemeSerializer(serializers.ModelSerializer):
     tema = serializers.ChoiceField(

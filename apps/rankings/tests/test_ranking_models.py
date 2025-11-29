@@ -24,7 +24,6 @@ def test_album_ranking_unique_album_constraint(user_fixture, album_fixture):
     AlbumRanking.objects.create(user=user_fixture, album=album_fixture, position=1)
     
     with pytest.raises(IntegrityError):
-        # Tentativa de rankear o mesmo álbum com posição diferente (Viola ('user', 'album'))
         AlbumRanking.objects.create(user=user_fixture, album=album_fixture, position=2)
 
 @pytest.mark.django_db
@@ -34,7 +33,6 @@ def test_album_ranking_unique_position_constraint(user_fixture, album_fixture, t
     AlbumRanking.objects.create(user=user_fixture, album=album_fixture, position=1)
     
     with pytest.raises(IntegrityError):
-        # Tentativa de rankear outro álbum com a mesma posição (Viola ('user', 'position'))
         AlbumRanking.objects.create(user=user_fixture, album=album_b, position=1)
         
 @pytest.mark.django_db
@@ -43,7 +41,6 @@ def test_track_ranking_unique_track_constraint(user_fixture, track_fixture):
     TrackRanking.objects.create(user=user_fixture, track=track_fixture, position=5)
     
     with pytest.raises(IntegrityError):
-        # Tenta rankear a mesma música com posição diferente (Viola ('user', 'track'))
         TrackRanking.objects.create(user=user_fixture, track=track_fixture, position=6)
 
 @pytest.mark.django_db
@@ -63,7 +60,6 @@ def test_country_global_ranking_unique_country(album_fixture, track_fixture):
     )
     
     with pytest.raises(IntegrityError):
-        # Tenta criar outro ranking com o mesmo nome ('country_name' é unique=True)
         CountryGlobalRanking.objects.create(country_name='Brazil')
 
 @pytest.mark.django_db
@@ -79,7 +75,6 @@ def test_group_ranking_unique_together(group_fixture, album_fixture, user_fixtur
     GroupRanking.objects.create(group=group_fixture, album=album_fixture, added_by=user_fixture)
     
     with pytest.raises(IntegrityError):
-        # Tenta adicionar o mesmo álbum ao mesmo grupo (Viola ('group', 'album'))
         GroupRanking.objects.create(group=group_fixture, album=album_fixture, added_by=user_fixture)
 
 @pytest.mark.django_db
@@ -96,7 +91,6 @@ def test_user_ranking_unique_together(user_fixture, group_fixture, album_fixture
     UserRanking.objects.create(group_ranking=group_ranking, user=user_fixture)
     
     with pytest.raises(IntegrityError):
-        # Tenta submeter o ranking novamente (Viola ('group_ranking', 'user'))
         UserRanking.objects.create(group_ranking=group_ranking, user=user_fixture)
 
 @pytest.mark.django_db
@@ -119,7 +113,6 @@ def test_ranked_track_creation(user_fixture, group_fixture, album_fixture, track
         position=1
     )
     assert ranked_track.position == 1
-    # Note: RankedTrack não tem __str__ definido, então só testamos a criação
 
 
 @pytest.mark.django_db

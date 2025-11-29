@@ -19,12 +19,10 @@ class TestAlbumModel:
         """Teste Unitário: Verifica a criação bem-sucedida de um Álbum."""
         album = setup_album
         
-        # 1. Verifica os valores dos campos
         assert album.title == "Fearless (Taylor's Version)"
         assert album.release_date == date(2021, 4, 9)
         assert album.cover_image_url == "http://example.com/fearless.jpg"
         
-        # 2. Verifica se o objeto existe no banco
         assert Album.objects.count() == 1
 
     def test_album_str_representation(self, setup_album):
@@ -35,17 +33,15 @@ class TestAlbumModel:
     def test_album_unique_title_constraint(self, setup_album):
         """Teste Unitário: Garante que títulos duplicados não são permitidos."""
         
-        # Tenta criar um segundo álbum com o mesmo título
         with pytest.raises(IntegrityError):
             Album.objects.create(
-                title="Fearless (Taylor's Version)", # Título duplicado
+                title="Fearless (Taylor's Version)", 
                 release_date=date(2022, 1, 1)
             )
 
     def test_album_ordering_meta(self):
         """Teste Unitário: Verifica se a ordenação Meta está funcionando (pela data)."""
         
-        # Cria álbuns fora de ordem cronológica
         Album.objects.create(
             title="1989 (Taylor's Version)",
             release_date=date(2023, 10, 27)
@@ -55,7 +51,6 @@ class TestAlbumModel:
             release_date=date(2021, 11, 12)
         )
         
-        # A Meta ordering deve garantir que 'Red' (2021) venha antes de '1989' (2023)
         ordered_albums = Album.objects.all()
         
         assert ordered_albums[0].title == "Red (Taylor's Version)"
@@ -67,7 +62,7 @@ class TestAlbumModel:
         album = Album.objects.create(
             title="Debut",
             release_date=date(2006, 10, 24),
-            cover_image_url=None # Deve permitir None no banco
+            cover_image_url=None 
         )
         
         assert album.cover_image_url is None

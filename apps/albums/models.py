@@ -1,8 +1,6 @@
 from django.db import models
 
-class Album(models.Model):
-    """Modelo para representar um álbum da Taylor Swift."""
-    
+class Album(models.Model):    
     title = models.CharField(
         max_length=150, 
         unique=True, 

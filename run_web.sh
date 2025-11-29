@@ -1,7 +1,6 @@
 #!/bin/bash
 # run_web.sh
 
-# Garante que o módulo de configurações está exportado para comandos futuros
 export DJANGO_SETTINGS_MODULE=config.settings.dev
 
 echo "📌 Rodando migrations..."

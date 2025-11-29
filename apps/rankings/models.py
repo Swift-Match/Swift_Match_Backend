@@ -7,7 +7,6 @@ from apps.social.models import Group
 from django.conf import settings
 from django.utils import timezone
 
-# --- Modelo 1: Ranking de Álbuns ---
 class AlbumRanking(models.Model):
     """
     Representa o ranking de álbuns de um usuário.
@@ -25,7 +24,6 @@ class AlbumRanking(models.Model):
         related_name='user_rankings',
         verbose_name='Álbum'
     )
-    # A posição que o usuário atribuiu ao álbum (1, 2, 3, etc.)
     position = models.PositiveSmallIntegerField(
         verbose_name='Posição no Ranking'
     )
@@ -33,15 +31,12 @@ class AlbumRanking(models.Model):
     class Meta:
         verbose_name = 'Ranking de Álbum'
         verbose_name_plural = 'Rankings de Álbuns'
-        # Garante que um usuário não rankeie o mesmo álbum duas vezes
-        # e que não existam duas posições iguais para o mesmo usuário (evita empates)
         unique_together = (('user', 'album'), ('user', 'position')) 
         ordering = ['user', 'position']
 
     def __str__(self):
         return f"{self.user.username}'s Ranking: {self.album.title} ({self.position}°)"
 
-# --- Modelo 2: Ranking de Músicas (por Álbum) ---
 class TrackRanking(models.Model):
     """
     Representa o ranking de músicas DENTRO de um álbum de um usuário.
@@ -58,7 +53,6 @@ class TrackRanking(models.Model):
         related_name='user_rankings',
         verbose_name='Música'
     )
-    # A posição que o usuário atribuiu à música (1, 2, 3, etc.)
     position = models.PositiveSmallIntegerField(
         verbose_name='Posição no Ranking'
     )
@@ -66,9 +60,6 @@ class TrackRanking(models.Model):
     class Meta:
         verbose_name = 'Ranking de Música'
         verbose_name_plural = 'Rankings de Músicas'
-        # A restrição de unicidade é mais complexa aqui, 
-        # pois o usuário pode ter uma música de álbuns diferentes na mesma posição global.
-        # No entanto, vamos garantir que ele só rankeie a música UMA vez
         unique_together = (('user', 'track'),) 
         ordering = ['user', 'position']
 
@@ -89,9 +80,8 @@ class CountryGlobalRanking(models.Model):
     user_count = models.IntegerField(
         default=0, 
         verbose_name='Número de Usuários Ativos'
-    ) # 🌟 Necessário para definir o tamanho da bubble no frontend
+    ) 
 
-    # Análise de Consenso/Extremos (Os IDs dos álbuns mais relevantes)
     consensus_album = models.ForeignKey(
         Album, 
         on_delete=models.SET_NULL, 
@@ -115,8 +105,6 @@ class CountryGlobalRanking(models.Model):
         verbose_name='Música Global Favorita'
     )
 
-    # Armazena o ranking completo (Álbum: Posição Média, Desvio Padrão)
-    # e outras métricas que não precisam de um campo FK dedicado.
     analysis_data = JSONField(
         default=dict, 
         verbose_name='Dados Completos da Análise (JSON)'
@@ -136,10 +124,10 @@ class GroupRanking(models.Model):
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='rankings_to_complete')
     album = models.ForeignKey(Album, on_delete=models.CASCADE)
     added_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    is_active = models.BooleanField(default=True) # Pode ser desativado
+    is_active = models.BooleanField(default=True) 
     
     class Meta:
-        unique_together = ('group', 'album') # Um álbum só pode ser adicionado ao grupo uma vez
+        unique_together = ('group', 'album') 
         verbose_name = 'Ranking de Grupo'
         
     def __str__(self):
@@ -147,21 +135,18 @@ class GroupRanking(models.Model):
     
 class UserRanking(models.Model):
     """A submissão de ranking individual de um usuário para um GroupRanking específico."""
-    # Agora se relaciona com GroupRanking, não apenas Album
     group_ranking = models.ForeignKey(GroupRanking, on_delete=models.CASCADE, related_name='submissions')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='group_submissions')
-    is_complete = models.BooleanField(default=True) # Marca que o ranking foi enviado
+    is_complete = models.BooleanField(default=True) 
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
-        # Um usuário só pode submeter um ranking para um GroupRanking específico uma vez
         unique_together = ('group_ranking', 'user') 
         verbose_name = 'Submissão de Ranking Individual'
 
     def __str__(self):
         return f"{self.user.username} submeteu {self.group_ranking.album.title}"
 
-# O modelo RankedTrack permanece o mesmo, mas agora aponta para o novo UserRanking
 class RankedTrack(models.Model):
     """Representa uma track dentro da submissão do usuário."""
     user_ranking = models.ForeignKey(UserRanking, on_delete=models.CASCADE, related_name='ranked_tracks')
@@ -172,14 +157,12 @@ class RankedTrack(models.Model):
         ordering = ['position']
     
 class Notification(models.Model):
-    # Quem deve receber a notificação
     recipient = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.CASCADE, 
         related_name='notifications'
     )
     
-    # Tipo de notificação (para fácil filtragem e apresentação no frontend)
     TYPE_CHOICES = [
         ('INVITE', 'Convite de Grupo'),
         ('MATCH_ALERT', 'Alerta de Rankeamento'),
@@ -187,13 +170,10 @@ class Notification(models.Model):
     ]
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='GENERIC')
     
-    # Conteúdo da notificação
     message = models.CharField(max_length=255)
     
-    # Link ou ID relacionado (opcional, ex: ID do grupo)
     related_id = models.IntegerField(null=True, blank=True) 
     
-    # Status de leitura
     is_read = models.BooleanField(default=False)
     
     created_at = models.DateTimeField(default=timezone.now)

@@ -1,4 +1,3 @@
-# apps/rankings/utils.py
 import logging
 import statistics
 from collections import defaultdict
@@ -10,7 +9,6 @@ from django.db.models import Avg, Count, F
 logger = logging.getLogger(__name__)
 
 
-# ----- Helpers para carregar modelos com fallback -----
 def _get_model(app_label: str, model_name: str):
     try:
         return apps.get_model(app_label, model_name)
@@ -18,7 +16,6 @@ def _get_model(app_label: str, model_name: str):
         return None
 
 
-# Carrega modelos (prefere imports diretos quando existirem no projeto)
 User = _get_model('users', 'User')
 Album = _get_model('albums', 'Album')
 AlbumRanking = _get_model('rankings', 'AlbumRanking') or _get_model('albums', 'AlbumRanking')
@@ -29,7 +26,6 @@ Group = _get_model('social', 'Group')
 GroupRanking = _get_model('rankings', 'GroupRanking')
 
 
-# ----- Mapa de álbuns (GLOBAL — importante para Celery worker) -----
 def get_album_map() -> Dict[int, object]:
     """
     Retorna { album_id: Album object }.
@@ -45,14 +41,12 @@ def get_album_map() -> Dict[int, object]:
             try:
                 album_map[int(album.id)] = album
             except Exception:
-                # salta album com id inválido
                 continue
     except Exception as e:
         logger.exception("Failed to build album_map: %s", e)
     return album_map
 
 
-# ----- FUNÇÕES DE COMPATIBILIDADE -----
 def _calculate_compatibility_from_queryset(shared_rankings, id_field_name):
     """
     Helper que recebe um queryset já convertido em .values(...) com keys:
@@ -133,11 +127,9 @@ def calculate_album_compatibility(user_a, user_b):
     if user_a.id == user_b.id:
         return 100.0, 0, {}
 
-    # tenta construir queryset de álbuns compartilhados de forma robusta
     try:
         shared_albums_qs = Album.objects.filter(user_rankings__user=user_a).filter(user_rankings__user=user_b).distinct()
     except Exception:
-        # fallback: procurar album_ids via AlbumRanking
         album_ids_a = AlbumRanking.objects.filter(user=user_a).values_list('album_id', flat=True)
         album_ids_b = AlbumRanking.objects.filter(user=user_b).values_list('album_id', flat=True)
         shared_ids = set(album_ids_a).intersection(set(album_ids_b))
@@ -229,7 +221,6 @@ def calculate_track_compatibility(user_a, user_b, album):
     return _calculate_compatibility_from_queryset(shared_rankings_qs, 'track_id')
 
 
-# ----- RANKING GLOBAL POR PAÍS -----
 def calculate_global_ranking():
     """
     Executa o cálculo do ranking de álbuns para todos os países
@@ -242,7 +233,6 @@ def calculate_global_ranking():
 
     print("--- INICIANDO CÁLCULO GLOBAL DE RANKING ---")
 
-    # Primeiro tenta identificar países usando related_name no User
     try:
         countries_data = (
             User.objects.filter(album_rankings__isnull=False)
@@ -251,7 +241,6 @@ def calculate_global_ranking():
             .filter(user_count__gte=2)
         )
     except Exception:
-        # fallback: agregar via AlbumRanking join
         try:
             countries_data = (
                 AlbumRanking.objects.values('user__country')
@@ -276,13 +265,11 @@ def calculate_global_ranking():
 
         country_user_ids = list(User.objects.filter(country=country).values_list('id', flat=True))
 
-        # agregação de álbuns (média + contagem)
         album_stats = AlbumRanking.objects.filter(user_id__in=country_user_ids).values('album_id').annotate(
             avg_position=Avg('position'),
             count=Count('position')
         ).order_by('avg_position')
 
-        # coleta todas as posições por álbum (fallback para stddev em Python)
         full_positions = defaultdict(list)
         for ranking in AlbumRanking.objects.filter(user_id__in=country_user_ids):
             full_positions[ranking.album_id].append(ranking.position)
@@ -311,7 +298,6 @@ def calculate_global_ranking():
                 "votes": stats.get('count', 0)
             }
 
-        # extremos nacionais (cuidando de None)
         consensus_album_id = None
         polarization_album_id = None
         if analysis_data:
@@ -327,7 +313,6 @@ def calculate_global_ranking():
             except Exception:
                 polarization_album_id = None
 
-        # garantir inteiros para lookup
         try:
             consensus_album_id_int = int(consensus_album_id) if consensus_album_id is not None else None
         except Exception:
@@ -337,7 +322,6 @@ def calculate_global_ranking():
         except Exception:
             polarization_album_id_int = None
 
-        # salva/atualiza CountryGlobalRanking
         try:
             ranking_obj, created = CountryGlobalRanking.objects.update_or_create(
                 country_name=country,
@@ -353,7 +337,6 @@ def calculate_global_ranking():
             logger.exception("Failed to update_or_create CountryGlobalRanking for %s: %s", country, e)
             continue
 
-        # ANALISE DE TRACKS POR PAÍS
         member_track_rankings = TrackRanking.objects.filter(user_id__in=country_user_ids).select_related('track') if TrackRanking is not None else []
 
         track_positions = defaultdict(list)
@@ -405,7 +388,6 @@ def calculate_global_ranking():
             if (current_polarized is None) or (analysis['std_dev_rank'] > cur_std):
                 polarization_track_id_by_album[album_id] = track_id
 
-        # serializa chaves como strings para JSONField
         serialized_track_analysis = {}
         for a_id, info in track_analysis_by_album.items():
             tracks_serialized = {str(tid): tinfo for tid, tinfo in info["tracks"].items()}
@@ -427,7 +409,6 @@ def calculate_global_ranking():
     print("--- CÁLCULO GLOBAL FINALIZADO ---")
 
 
-# ----- COERÊNCIA INTERNA DE GRUPO (CIGG) -----
 def calculate_group_internal_coherence(group) -> float:
     """
     CIGG (0..100). Implementação fixa para os testes:

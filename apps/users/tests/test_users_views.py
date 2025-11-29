@@ -7,7 +7,7 @@ class TestUserViews:
 
     def test_register_user_integration(self, api_client):
         """Teste de Integração: Fluxo completo de cadastro"""
-        url = reverse('user-register') # Confirme se o name na url.py é 'user-register'
+        url = reverse('user-register') 
         data = {
             "username": "integration_user",
             "email": "int@test.com",
@@ -21,7 +21,6 @@ class TestUserViews:
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["message"] == "Usuário criado com sucesso!"
         
-        # Verifica efeito colateral (se realmente salvou no banco)
         from django.contrib.auth import get_user_model
         assert get_user_model().objects.filter(username="integration_user").exists()
 
@@ -33,13 +32,10 @@ class TestUserViews:
 
     def test_user_profile_success(self, api_client, create_user):
         """Teste de Integração: Acessar perfil autenticado"""
-        # 1. Criar usuário
         user = create_user(username="auth_user", password="123", email="auth@test.com")
         
-        # 2. Forçar autenticação no client (simula o Token/JWT)
         api_client.force_authenticate(user=user)
         
-        # 3. Fazer requisição
         url = reverse('user-profile')
         response = api_client.get(url)
         

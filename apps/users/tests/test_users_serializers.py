@@ -24,9 +24,9 @@ class TestUserSerializer:
         assert user.check_password("plain_password_123")
 
     @pytest.mark.parametrize("field, value, error_code", [
-        ("username", "", "blank"),            # Username vazio retorna código 'blank'
-        ("email", "not-an-email", "invalid"), # Email ruim retorna código 'invalid'
-        ("password", "", "blank"),            # Senha vazia retorna código 'blank'
+        ("username", "", "blank"),           
+        ("email", "not-an-email", "invalid"), 
+        ("password", "", "blank"),           
     ])
     def test_registration_serializer_invalid_data(self, field, value, error_code):
         """Teste Parametrizado: Valida campos obrigatórios e formatos"""
@@ -36,15 +36,12 @@ class TestUserSerializer:
             "password": "validpass123",
             "first_name": "Test"
         }
-        # Sobrescreve o campo específico com o valor inválido
         data[field] = value
         
         serializer = UserRegistrationSerializer(data=data)
         
         assert not serializer.is_valid()
         
-        # CORREÇÃO: Verificamos o atributo .code do objeto de erro, não a string da mensagem
-        # serializer.errors[field][0] é um objeto ErrorDetail
         assert serializer.errors[field][0].code == error_code
 
     def test_serializer_read_only_fields(self, create_user):

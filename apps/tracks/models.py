@@ -1,5 +1,5 @@
 from django.db import models
-from apps.albums.models import Album # Importa o modelo Album
+from apps.albums.models import Album 
 
 class Track(models.Model):
     """Modelo para representar uma música (track) de um álbum."""

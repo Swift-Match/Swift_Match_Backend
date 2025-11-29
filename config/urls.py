@@ -6,7 +6,7 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView # Necessário para o login JWT
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView 
 
 urlpatterns = [
     path('admin/', admin.site.urls),

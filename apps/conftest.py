@@ -2,8 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 from apps.albums.models import Album
 from apps.tracks.models import Track
-from apps.social.models import Group # Importe Group
-# --- Fixtures que já existiam (e usaremos) ---
+from apps.social.models import Group 
 
 @pytest.fixture
 def api_client():
@@ -16,7 +15,6 @@ def create_user(db, django_user_model):
         return django_user_model.objects.create_user(**kwargs)
     return make_user
 
-# --- NOVAS FIXTURES NECESSÁRIAS PARA OS TESTES DE RANKINGS ---
 
 @pytest.fixture
 def user_fixture(create_user):
@@ -38,7 +36,6 @@ def album_fixture(db):
 @pytest.fixture
 def track_fixture(db, album_fixture):
     """Cria uma música de teste associada ao álbum."""
-    # Garante que a Track é criada DEPOIS que o Album existe
     return Track.objects.create(
         album=album_fixture,
         title='Enchanted',

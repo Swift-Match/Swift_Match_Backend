@@ -7,8 +7,8 @@ class User(AbstractUser):
     country = models.CharField(
         max_length=100, 
         blank=True, 
-        null=True, # Permite nulo no banco
-        default="", # Padrão
+        null=True, 
+        default="", 
         verbose_name="País de Origem"
     )
     

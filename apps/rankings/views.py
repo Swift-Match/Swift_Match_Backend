@@ -2,7 +2,7 @@ from rest_framework import status, viewsets, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.db.models import Q # Importado para a checagem de amizade
+from django.db.models import Q 
 from .models import AlbumRanking, TrackRanking, GroupRanking, CountryGlobalRanking
 from django.shortcuts import get_object_or_404
 from apps.albums.models import Album
@@ -59,14 +59,13 @@ class AlbumRankingView(APIView):
     """
     Permite ao usuário autenticado enviar seu ranking de álbuns.
     """
-    permission_classes = [IsAuthenticated] # O usuário PRECISA estar logado
+    permission_classes = [IsAuthenticated] 
     serializer_class = AlbumRankingSerializer
 
     def post(self, request):
         serializer = AlbumRankingSerializer(data=request.data)
         if serializer.is_valid():
             try:
-                # Passa o usuário logado para o método create do serializer
                 serializer.create(serializer.validated_data, user=request.user)
                 return Response(
                     {"message": "Ranking de álbuns salvo com sucesso!"}, 
@@ -77,11 +76,9 @@ class AlbumRankingView(APIView):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    # Adicionar um método GET aqui seria útil para visualizar o ranking atual do usuário
     def get(self, request):
         rankings = AlbumRanking.objects.filter(user=request.user).order_by('position')
         
-        # Um Serializer de leitura seria ideal aqui, mas vamos simplificar por enquanto:
         data = [{
             'album_id': r.album.id, 
             'album_title': r.album.title, 
@@ -98,9 +95,7 @@ class TrackRankingView(APIView):
 
     serializer_class = TrackRankingSerializer
 
-    # O album_id vem da URL
     def post(self, request, album_id):
-        # Adiciona o album_id ao corpo da requisição para o Serializer
         data = request.data.copy()
         data['album_id'] = album_id 
         
@@ -121,7 +116,6 @@ class TrackRankingView(APIView):
     def get(self, request, album_id):
         album = get_object_or_404(Album, pk=album_id)
         
-        # Filtra o ranking do usuário logado para as músicas deste álbum
         rankings = TrackRanking.objects.filter(
             user=request.user, 
             track__album=album
@@ -149,7 +143,6 @@ class GroupCompatibilityView(APIView):
     def get(self, request, group_id):
         group = get_object_or_404(Group, pk=group_id)
         
-        # 1. Verifica se o usuário logado é membro do grupo
         if not group.members.filter(pk=request.user.id).exists():
             return Response(
                 {"error": "Você não é membro deste grupo."}, 
@@ -174,7 +167,6 @@ class GroupCompatibilityView(APIView):
         
         if len(users_with_ranking_ids) < num_members:
             non_ranking_ids = member_ids - users_with_ranking_ids
-            # OBS: Você precisa garantir que 'User' esteja importado (from apps.users.models import User)
             non_ranking_members = User.objects.filter(id__in=non_ranking_ids)
             non_ranking_usernames = [u.username for u in non_ranking_members]
             
@@ -183,22 +175,17 @@ class GroupCompatibilityView(APIView):
                 status=status.HTTP_400_BAD_REQUEST 
             )
 
-        # 2. Calcular a compatibilidade de TODOS os pares (A-B, A-C, B-C, etc.)
         total_compatibility = 0
         pair_comparisons = 0
         detailed_comparisons = []
 
-        # Estruturas para a análise de grupo
         album_positions = defaultdict(list)
         best_match_pair = {"percent": -1, "users": None}
         worst_match_pair = {"percent": 101, "users": None}
 
-        # Usa itertools.combinations para pegar todos os pares únicos
         for user_a, user_b in combinations(members, 2):
-            # Chamamos a função que agora retorna a análise detalhada da dupla também
             compatibility, shared_albums, analysis_report = calculate_album_compatibility(user_a, user_b)
             
-            # Atualiza o melhor/pior par de match
             if compatibility > best_match_pair["percent"]:
                 best_match_pair = {"percent": compatibility, "users": (user_a.username, user_b.username)}
             if compatibility < worst_match_pair["percent"]:
@@ -212,61 +199,47 @@ class GroupCompatibilityView(APIView):
                 "user_b": user_b.username,
                 "percent": compatibility,
                 "shared_albums": shared_albums,
-                "duo_analysis": analysis_report # Detalhe do matching da dupla
+                "duo_analysis": analysis_report 
             })
 
-            # Coletar todas as posições para os álbuns compartilhados (para Desvio Padrão e Média)
             if shared_albums > 0:
-                # Necessário buscar o ranking dos álbuns compartilhados novamente de forma otimizada
-                # Usaremos um ORM para essa coleta mais eficiente fora do loop de pares,
-                # Mas por simplicidade, faremos uma busca auxiliar aqui (idealmente, isso seria pré-buscado)
                 
-                # Para simplificar, vamos buscar as posições de TODOS os álbuns rankeados no grupo:
                 for ranking in AlbumRanking.objects.filter(user__in=members):
                     album_positions[ranking.album.id].append(ranking.position)
 
-        # Verifica se houve alguma comparação de pares
         if pair_comparisons == 0:
             return Response(
                 {"compatibility_percent": 0, "message": "O grupo precisa de pelo menos 2 membros com rankings em comum."}, 
                 status=status.HTTP_200_OK
             )
             
-        # 2. Análise Coletiva (Consenso e Polarização)
         
         group_album_analysis = {}
         for album_id, positions in album_positions.items():
-            if len(positions) > 1: # Só faz sentido calcular se mais de um membro rankeou
+            if len(positions) > 1: 
                 
-                # Média das Posições (Consenso)
                 avg_position = statistics.mean(positions)
                 
-                # Desvio Padrão (Polarização)
                 try:
                     std_dev = statistics.stdev(positions)
                 except statistics.StatisticsError:
-                    std_dev = 0 # Ocorre se houver apenas um elemento ou posições idênticas
+                    std_dev = 0 
                 
                 group_album_analysis[album_id] = {
                     "avg_position": round(avg_position, 2),
                     "std_dev": round(std_dev, 2)
                 }
         
-        # 3. Identificação dos Extremos
         
-        # Álbum do Consenso (Menor Média)
         consensus_album_id = min(group_album_analysis, key=lambda id: group_album_analysis[id]["avg_position"], default=None)
         
-        # Álbum da Discórdia (Maior Média)
         discord_album_id = max(group_album_analysis, key=lambda id: group_album_analysis[id]["avg_position"], default=None)
 
-        # Álbum da Maior Polarização (Maior Desvio Padrão)
         polarization_album_id = max(group_album_analysis, key=lambda id: group_album_analysis[id]["std_dev"], default=None)
 
 
         group_compatibility = round(total_compatibility / pair_comparisons, 2)
         
-        # 4. Resposta Final
         return Response({
             "group_name": group.name,
             "members_count": num_members,
@@ -278,7 +251,7 @@ class GroupCompatibilityView(APIView):
                 "polarization_album_id": polarization_album_id,
                 "best_matching_pair": best_match_pair,
                 "worst_matching_pair": worst_match_pair,
-                "full_group_ranking_data": group_album_analysis # Dados brutos de todas as médias/polarizações
+                "full_group_ranking_data": group_album_analysis 
             },
             
             "detailed_comparisons": detailed_comparisons
@@ -293,7 +266,6 @@ def check_friendship(user_a, user_b):
     if user_a.id == user_b.id:
         return True
 
-    # usa os nomes reais dos campos do model Friendship: from_user / to_user
     return Friendship.objects.filter(
         (Q(from_user=user_a) & Q(to_user=user_b)) | (Q(from_user=user_b) & Q(to_user=user_a)),
         status=2
@@ -319,9 +291,7 @@ class CompatibilityView(APIView):
         except User.DoesNotExist:
             return Response({"error": "Usuário alvo não encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        # REMOVIDO: checagem de amizade
 
-        # CHECAGEM DE COBERTURA DE RANKING (ÁLBUNS)
         user_a_has_rankings = AlbumRanking.objects.filter(user=user_a).exists()
         user_b_has_rankings = AlbumRanking.objects.filter(user=user_b).exists()
 
@@ -334,7 +304,6 @@ class CompatibilityView(APIView):
 
             return Response({"error": f"Não é possível comparar. O(s) usuário(s) {', '.join(missing_user)} ainda não submeteram seu ranking de álbuns."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # chama utilitário
         compatibility_percent, num_shared_albums, analysis_report = calculate_album_compatibility(user_a, user_b)
 
         if num_shared_albums == 0:
@@ -369,9 +338,7 @@ class TrackCompatibilityView(APIView):
         except Album.DoesNotExist:
             return Response({"error": "Álbum não encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        # REMOVIDO: checagem de amizade
 
-        # CHECAGEM DE COBERTURA DE RANKING (MÚSICAS DO ÁLBUM)
         user_a_has_rankings = TrackRanking.objects.filter(user=user_a, track__album=album).exists()
         user_b_has_rankings = TrackRanking.objects.filter(user=user_b, track__album=album).exists()
 
@@ -411,7 +378,6 @@ class GroupTrackCompatibilityView(APIView):
         group = get_object_or_404(Group, pk=group_id)
         album = get_object_or_404(Album, pk=album_id)
 
-        # 1. Verifica se o usuário logado é membro do grupo
         if not group.members.filter(pk=request.user.id).exists():
             return Response(
                 {"error": "Você não é membro deste grupo."}, 
@@ -429,7 +395,6 @@ class GroupTrackCompatibilityView(APIView):
 
         member_ids = {member.id for member in members}
         
-        # Filtra TrackRanking apenas para os membros do grupo e para as músicas do álbum
         users_with_track_ranking_ids = set(
              TrackRanking.objects.filter(
                 user__in=member_ids, 
@@ -439,7 +404,6 @@ class GroupTrackCompatibilityView(APIView):
 
         if len(users_with_track_ranking_ids) < num_members:
             non_ranking_ids = member_ids - users_with_track_ranking_ids
-            # OBS: Você precisa garantir que 'User' esteja importado
             non_ranking_members = User.objects.filter(id__in=non_ranking_ids)
             non_ranking_usernames = [u.username for u in non_ranking_members]
 
@@ -448,20 +412,16 @@ class GroupTrackCompatibilityView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. Coletar posições de ranking de TODAS as músicas do álbum, de TODOS os membros
         track_positions = defaultdict(list)
         
-        # Filtra o TrackRanking apenas para os membros do grupo e para as músicas do álbum
         member_track_rankings = TrackRanking.objects.filter(
             user__in=members, 
             track__album=album
         ).select_related('track')
         
-        # Agrupa as posições por ID da música
         for ranking in member_track_rankings:
             track_positions[ranking.track.id].append(ranking.position)
 
-        # 3. Calcular compatibilidade e análise de pares (para detalhamento)
         total_compatibility = 0
         pair_comparisons = 0
         detailed_comparisons = []
@@ -469,13 +429,11 @@ class GroupTrackCompatibilityView(APIView):
         worst_match_pair = {"percent": 101, "users": None}
 
         for user_a, user_b in combinations(members, 2):
-            # Usamos a função utilitária de músicas, passando o álbum
             compatibility, shared_tracks, analysis_report = calculate_track_compatibility(user_a, user_b, album)
             
             total_compatibility += compatibility
             pair_comparisons += 1
             
-            # Atualiza o melhor/pior par
             if compatibility > best_match_pair["percent"]:
                 best_match_pair = {"percent": compatibility, "users": (user_a.username, user_b.username)}
             if compatibility < worst_match_pair["percent"]:
@@ -495,14 +453,13 @@ class GroupTrackCompatibilityView(APIView):
                 status=status.HTTP_200_OK
             )
 
-        # 4. Análise Coletiva (Consenso, Discórdia, Polarização)
         group_track_analysis = {}
         for track_id, positions in track_positions.items():
-            if len(positions) > 1: # Pelo menos 2 pessoas rankearam a música
+            if len(positions) > 1: 
                 avg_position = statistics.mean(positions)
                 
                 try:
-                    std_dev = statistics.stdev(positions) # Desvio Padrão
+                    std_dev = statistics.stdev(positions) 
                 except statistics.StatisticsError:
                     std_dev = 0 
                 
@@ -511,21 +468,16 @@ class GroupTrackCompatibilityView(APIView):
                     "std_dev": round(std_dev, 2)
                 }
         
-        # 5. Identificação dos Extremos
         
-        # Consenso (Menor Média de Posição)
         consensus_track_id = min(group_track_analysis, key=lambda id: group_track_analysis[id]["avg_position"], default=None)
         
-        # Discórdia (Maior Média de Posição)
         discord_track_id = max(group_track_analysis, key=lambda id: group_track_analysis[id]["avg_position"], default=None)
 
-        # Polarização (Maior Desvio Padrão)
         polarization_track_id = max(group_track_analysis, key=lambda id: group_track_analysis[id]["std_dev"], default=None)
 
 
         group_compatibility = round(total_compatibility / pair_comparisons, 2)
         
-        # 6. Resposta Final
         return Response({
             "group_name": group.name,
             "album_title": album.title,
@@ -555,14 +507,12 @@ class GlobalRankingListView(generics.ListAPIView):
 class GroupRankingViewSet(viewsets.ModelViewSet):
     """Endpoint para adicionar/gerenciar álbuns a serem rankeados pelos grupos."""
     
-    # Usuário só vê os rankings dos grupos dos quais ele participa
     queryset = GroupRanking.objects.all() 
     serializer_class = GroupRankingCreateSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-        # Filtra GroupRankings para álbuns adicionados aos grupos onde o usuário é membro
         return GroupRanking.objects.filter(group__members=user).order_by('-id')
     
     def perform_create(self, serializer):
@@ -582,7 +532,7 @@ class AlbumRankingView(APIView):
                 serializer.create(serializer.validated_data, user=request.user)
                 return Response(
                     {"message": "Ranking de álbuns atualizado com sucesso!"}, 
-                    status=status.HTTP_200_OK # 200 OK para atualização bem-sucedida
+                    status=status.HTTP_200_OK 
                 )
             except serializers.ValidationError as e:
                 return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
@@ -603,7 +553,6 @@ class UserRankedTitlesView(APIView):
     def get(self, request, *args, **kwargs):
         user = request.user
 
-        # 1) Álbuns ranqueados explicitamente (AlbumRanking)
         albums_via_album = list(
             AlbumRanking.objects
             .filter(user=user, album__isnull=False)
@@ -611,7 +560,6 @@ class UserRankedTitlesView(APIView):
             .distinct()
         )
 
-        # 2) Álbums derivados das tracks ranqueadas (TrackRanking -> track.album)
         albums_via_tracks = list(
             TrackRanking.objects
             .filter(user=user, track__isnull=False, track__album__isnull=False)
@@ -619,7 +567,6 @@ class UserRankedTitlesView(APIView):
             .distinct()
         )
 
-        # 3) Títulos de tracks ranqueadas (mantemos caso precise no front)
         track_titles = list(
             TrackRanking.objects
             .filter(user=user, track__isnull=False)
@@ -627,7 +574,6 @@ class UserRankedTitlesView(APIView):
             .distinct()
         )
 
-        # 4) União preservando ordem: primeiro albums_via_album, depois albums_via_tracks sem duplicatas
         combined = []
         seen = set()
         for t in albums_via_album + albums_via_tracks:
@@ -654,12 +600,9 @@ class OtherUserRankedTitlesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk, *args, **kwargs):
-        # Busca o usuário pelo ID (pk) da URL. Retorna 404 se não encontrado.
         target_user = get_object_or_404(User, pk=pk)
         
-        # O restante da lógica é idêntica, mas usando target_user em vez de request.user
         
-        # 1) Álbuns ranqueados explicitamente (AlbumRanking)
         albums_via_album = list(
             AlbumRanking.objects
             .filter(user=target_user, album__isnull=False)
@@ -667,7 +610,6 @@ class OtherUserRankedTitlesView(APIView):
             .distinct()
         )
 
-        # 2) Álbums derivados das tracks ranqueadas (TrackRanking -> track.album)
         albums_via_tracks = list(
             TrackRanking.objects
             .filter(user=target_user, track__isnull=False, track__album__isnull=False)
@@ -675,7 +617,6 @@ class OtherUserRankedTitlesView(APIView):
             .distinct()
         )
 
-        # 3) Títulos de tracks ranqueadas
         track_titles = list(
             TrackRanking.objects
             .filter(user=target_user, track__isnull=False)
@@ -683,7 +624,6 @@ class OtherUserRankedTitlesView(APIView):
             .distinct()
         )
 
-        # 4) União preservando ordem
         combined = []
         seen = set()
         for t in albums_via_album + albums_via_tracks:

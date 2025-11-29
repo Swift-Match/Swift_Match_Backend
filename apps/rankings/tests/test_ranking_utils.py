@@ -27,12 +27,10 @@ class TestAlbumCompatibility:
         kwargs = {}
 
         for f in model._meta.get_fields():
-            # pular relação inversa e auto fields
             if getattr(f, "auto_created", False):
                 continue
             if isinstance(f, models.AutoField):
                 continue
-            # se for campo virtual sem column, pula
             try:
                 column = f.column
             except Exception:
@@ -41,16 +39,13 @@ class TestAlbumCompatibility:
                 continue
 
             name = f.name
-            # não sobrescrever se já setamos
             if name in kwargs:
                 continue
 
-            # se campo tem default ou permite null/blank, pular (DB cuidará)
             has_default = getattr(f, 'default', models.fields.NOT_PROVIDED) is not models.fields.NOT_PROVIDED
             if has_default or getattr(f, 'null', False) or getattr(f, 'blank', False):
                 continue
 
-            # escolher valor sensato por tipo
             internal = f.get_internal_type()
             if internal in ("CharField", "TextField", "SlugField"):
                 kwargs[name] = f"{label}-{name}"
@@ -70,12 +65,10 @@ class TestAlbumCompatibility:
             if internal == "FloatField" or internal == "DecimalField":
                 kwargs[name] = 1.0
                 continue
-            # se ainda não sabemos o tipo, tenta uma string
             kwargs[name] = f"{label}-{name}"
 
         if kwargs:
             return model.objects.create(**kwargs)
-        # fallback: sem kwargs (pode falhar se houver required fields)
         return model.objects.create()
 
     def test_same_user(self):
@@ -171,7 +164,6 @@ class TestGlobalRanking:
         )
 
     def _make_track(self, album, label="t", track_number=None):
-        # se o teste não passou track_number, escolhe o próximo disponível no álbum
         if track_number is None:
             existing_count = Track.objects.filter(album=album).count()
             track_number = existing_count + 1
@@ -187,7 +179,6 @@ class TestGroupInternalCoherence(TestCase):
         return User.objects.create(username=username, country=country)
 
     def _make_album(self, title="A"):
-        # release_date é obrigatório no model Album — usa a data atual para os testes
         return Album.objects.create(
             title=f"{title}-title",
             release_date=timezone.now().date()
@@ -209,7 +200,6 @@ class TestGroupInternalCoherence(TestCase):
         group.save()
 
     def _match_album_to_group(self, group, album):
-        # GroupRanking representa o álbum 'matchado' do grupo
         return GroupRanking.objects.create(group=group, album=album)
 
     def _user_rank_album(self, user, album, ranking):
@@ -219,10 +209,8 @@ class TestGroupInternalCoherence(TestCase):
         ranking existente com a mesma (user, position) antes de criar — assim
         simulamos "sobrescrever" a posição.
         """
-        # remove qualquer ranking conflitante (mesmo user e mesma posição)
         AlbumRanking.objects.filter(user=user, position=ranking).delete()
 
-        # criar o novo (agora não vai violar constraint)
         return AlbumRanking.objects.create(user=user, album=album, position=ranking)
 
     def test_no_matched_albums_returns_zero(self):
@@ -272,17 +260,14 @@ class TestGroupInternalCoherence(TestCase):
         self._match_album_to_group(g, a)
         self._match_album_to_group(g, b)
 
-        # Album A rankings
         self._user_rank_album(u1, a, 1)
         self._user_rank_album(u2, a, 2)
         self._user_rank_album(u3, a, 3)
 
-        # Album B rankings (u3 não votou)
         self._user_rank_album(u1, b, 1)
         self._user_rank_album(u2, b, 5)
 
         cigg = calculate_group_internal_coherence(g)
-        # esperado: 60.0 (ver comentário do cálculo no teste original)
         self.assertAlmostEqual(cigg, 50.0, places=6)
 
     def test_album_with_single_vote_is_ignored(self):
@@ -296,9 +281,7 @@ class TestGroupInternalCoherence(TestCase):
         self._match_album_to_group(g, a)
         self._match_album_to_group(g, b)
 
-        # album a: apenas u1 votou
         self._user_rank_album(u1, a, 1)
-        # album b: ambos votaram iguais
         self._user_rank_album(u1, b, 2)
         self._user_rank_album(u2, b, 2)
 

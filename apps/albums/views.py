@@ -1,5 +1,5 @@
 from rest_framework import generics
-from rest_framework.permissions import AllowAny # Importar permissão pública
+from rest_framework.permissions import AllowAny 
 from .models import Album
 from .serializers import AlbumSerializer
 

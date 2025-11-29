@@ -5,10 +5,8 @@ class RankingsConfig(AppConfig):
     name = 'apps.rankings'
 
     def ready(self):
-        # importa o módulo signals para registrar receivers
         try:
-            import apps.rankings.signals  # noqa: F401
+            import apps.rankings.signals  
         except Exception:
-            # opcional: logar erro para debug
             import logging
             logging.getLogger(__name__).exception("Falha importando apps.rankings.signals")
