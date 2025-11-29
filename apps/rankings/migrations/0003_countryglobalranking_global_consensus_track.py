@@ -7,14 +7,20 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('rankings', '0002_countryglobalranking'),
-        ('tracks', '0001_initial'),
+        ("rankings", "0002_countryglobalranking"),
+        ("tracks", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='countryglobalranking',
-            name='global_consensus_track',
-            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='country_global_consensus', to='tracks.track', verbose_name='Música Global Favorita'),
+            model_name="countryglobalranking",
+            name="global_consensus_track",
+            field=models.ForeignKey(
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="country_global_consensus",
+                to="tracks.track",
+                verbose_name="Música Global Favorita",
+            ),
         ),
     ]

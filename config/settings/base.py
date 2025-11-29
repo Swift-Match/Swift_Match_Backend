@@ -10,7 +10,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-secret-key")
-DEBUG = False 
+DEBUG = False
 
 ALLOWED_HOSTS = ["*"]
 
@@ -30,24 +30,24 @@ INSTALLED_APPS = [
     "apps.tracks.apps.TracksConfig",
     "apps.rankings.apps.RankingsConfig",
     "apps.social.apps.SocialConfig",
-    'django_celery_beat',
-    'corsheaders',
+    "django_celery_beat",
+    "corsheaders",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    'corsheaders.middleware.CorsMiddleware', 
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "django.contrib.auth.middleware.AuthenticationMiddleware",     
-    "django.contrib.messages.middleware.MessageMiddleware",         
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
 
 DATABASES = {
-    'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL', 'sqlite:///db.sqlite3'),
+    "default": dj_database_url.config(
+        default=os.getenv("DATABASE_URL", "sqlite:///db.sqlite3"),
         conn_max_age=600,
     )
 }
@@ -70,8 +70,8 @@ SPECTACULAR_SETTINGS = {
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],     
-        "APP_DIRS": True, 
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.debug",
@@ -83,13 +83,15 @@ TEMPLATES = [
     },
 ]
 
-AUTH_USER_MODEL = 'users.User'
+AUTH_USER_MODEL = "users.User"
 
-REST_FRAMEWORK.update({
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ),
-})
+REST_FRAMEWORK.update(
+    {
+        "DEFAULT_AUTHENTICATION_CLASSES": (
+            "rest_framework_simplejwt.authentication.JWTAuthentication",
+        ),
+    }
+)
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
@@ -102,31 +104,29 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "user_id",
 }
 
-CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'America/Sao_Paulo'
+CELERY_BROKER_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "America/Sao_Paulo"
 
 CELERY_BEAT_SCHEDULE = {
-    'update-global-ranking-daily': {
-        'task': 'apps.rankings.tasks.run_global_ranking_calculation', 
-        'schedule': crontab(minute=0, hour=0), 
-        'args': (),
-        'options': {'queue': 'default'}
+    "update-global-ranking-daily": {
+        "task": "apps.rankings.tasks.run_global_ranking_calculation",
+        "schedule": crontab(minute=0, hour=0),
+        "args": (),
+        "options": {"queue": "default"},
     },
 }
 
-CORS_ALLOW_ALL_ORIGINS = False 
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",    
+    "http://localhost:5173",
     "http://127.0.0.1:5173",
-    
-    "https://swift-match-frontend.vercel.app", 
-    
+    "https://swift-match-frontend.vercel.app",
     "https://swift-match-frontend-8caxfadsy-natalias-projects-1917c8f4.vercel.app",
 ]
 
@@ -135,10 +135,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://swift-match-backend.onrender.com", 
-    
+    "https://swift-match-backend.onrender.com",
     "https://swift-match-frontend.vercel.app",
-    
     "https://swift-match-frontend-8caxfadsy-natalias-projects-1917c8f4.vercel.app",
-    
 ]

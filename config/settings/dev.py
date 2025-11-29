@@ -6,6 +6,8 @@ INSTALLED_APPS += [
     "drf_spectacular_sidecar",
 ]
 
-SPECTACULAR_SETTINGS.update({
-    "SERVE_INCLUDE_SCHEMA": True,
-})
+SPECTACULAR_SETTINGS.update(
+    {
+        "SERVE_INCLUDE_SCHEMA": True,
+    }
+)

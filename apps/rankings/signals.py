@@ -6,29 +6,44 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def enqueue_global_ranking_task():
     try:
         run_global_ranking_calculation.delay()
         logger.info("Enfileirada run_global_ranking_calculation via signal.")
     except Exception:
-        logger.exception("Falha ao enfileirar run_global_ranking_calculation via signal.")
+        logger.exception(
+            "Falha ao enfileirar run_global_ranking_calculation via signal."
+        )
+
 
 @receiver(post_save, sender=AlbumRanking)
 def album_ranking_saved(sender, instance, created, **kwargs):
-    logger.debug("Signal: AlbumRanking saved id=%s created=%s", getattr(instance, 'id', None), created)
+    logger.debug(
+        "Signal: AlbumRanking saved id=%s created=%s",
+        getattr(instance, "id", None),
+        created,
+    )
     enqueue_global_ranking_task()
+
 
 @receiver(post_delete, sender=AlbumRanking)
 def album_ranking_deleted(sender, instance, **kwargs):
-    logger.debug("Signal: AlbumRanking deleted id=%s", getattr(instance, 'id', None))
+    logger.debug("Signal: AlbumRanking deleted id=%s", getattr(instance, "id", None))
     enqueue_global_ranking_task()
+
 
 @receiver(post_save, sender=TrackRanking)
 def track_ranking_saved(sender, instance, created, **kwargs):
-    logger.debug("Signal: TrackRanking saved id=%s created=%s", getattr(instance, 'id', None), created)
+    logger.debug(
+        "Signal: TrackRanking saved id=%s created=%s",
+        getattr(instance, "id", None),
+        created,
+    )
     enqueue_global_ranking_task()
+
 
 @receiver(post_delete, sender=TrackRanking)
 def track_ranking_deleted(sender, instance, **kwargs):
-    logger.debug("Signal: TrackRanking deleted id=%s", getattr(instance, 'id', None))
+    logger.debug("Signal: TrackRanking deleted id=%s", getattr(instance, "id", None))
     enqueue_global_ranking_task()

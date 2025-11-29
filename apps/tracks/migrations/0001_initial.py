@@ -9,23 +9,45 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('albums', '0001_initial'),
+        ("albums", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Track',
+            name="Track",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('title', models.CharField(max_length=255, verbose_name='Título da Música')),
-                ('track_number', models.PositiveSmallIntegerField(verbose_name='Número da Faixa')),
-                ('album', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tracks', to='albums.album', verbose_name='Álbum')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "title",
+                    models.CharField(max_length=255, verbose_name="Título da Música"),
+                ),
+                (
+                    "track_number",
+                    models.PositiveSmallIntegerField(verbose_name="Número da Faixa"),
+                ),
+                (
+                    "album",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="tracks",
+                        to="albums.album",
+                        verbose_name="Álbum",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Música',
-                'verbose_name_plural': 'Músicas',
-                'ordering': ['album__release_date', 'track_number'],
-                'unique_together': {('album', 'track_number')},
+                "verbose_name": "Música",
+                "verbose_name_plural": "Músicas",
+                "ordering": ["album__release_date", "track_number"],
+                "unique_together": {("album", "track_number")},
             },
         ),
     ]

@@ -1,17 +1,13 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-from django.utils import timezone
+
 
 class User(AbstractUser):
 
     country = models.CharField(
-        max_length=100, 
-        blank=True, 
-        null=True, 
-        default="", 
-        verbose_name="País de Origem"
+        max_length=100, blank=True, null=True, default="", verbose_name="País de Origem"
     )
-    
+
     TEMA_CHOICES = (
         ("TS", "Taylor Swift (Debut)"),
         ("FEARLESS", "Fearless"),
@@ -24,25 +20,23 @@ class User(AbstractUser):
         ("EVERMORE", "Evermore"),
         ("MIDNIGHTS", "Midnights"),
         ("TTPD", "The Tortured Poets Department"),
-        ("SHOWGIRL", "The Life of a Showgirl")
+        ("SHOWGIRL", "The Life of a Showgirl"),
     )
 
     first_login = models.DateTimeField(
-        blank=True,
-        null=True,
-        verbose_name="Primeiro Login"
+        blank=True, null=True, verbose_name="Primeiro Login"
     )
-    
+
     tema = models.CharField(
         max_length=20,
         choices=TEMA_CHOICES,
         default="MIDNIGHTS",
-        verbose_name="Tema do Álbum"
+        verbose_name="Tema do Álbum",
     )
 
     class Meta:
         verbose_name = "Usuário"
         verbose_name_plural = "Usuários"
-        
+
     def __str__(self):
         return self.username

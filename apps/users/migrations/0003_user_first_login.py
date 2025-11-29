@@ -6,13 +6,15 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0002_user_country'),
+        ("users", "0002_user_country"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='user',
-            name='first_login',
-            field=models.DateTimeField(blank=True, null=True, verbose_name='Primeiro Login'),
+            model_name="user",
+            name="first_login",
+            field=models.DateTimeField(
+                blank=True, null=True, verbose_name="Primeiro Login"
+            ),
         ),
     ]

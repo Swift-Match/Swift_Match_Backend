@@ -1,6 +1,6 @@
 from config.celery import app
-from .utils import calculate_global_ranking, calculate_group_internal_coherence
-from celery import shared_task
+from .utils import calculate_global_ranking
+
 
 @app.task
 def run_global_ranking_calculation():
@@ -9,4 +9,3 @@ def run_global_ranking_calculation():
     """
     calculate_global_ranking()
     return "Cálculo global de ranking concluído com sucesso."
-

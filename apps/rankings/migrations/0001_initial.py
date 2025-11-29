@@ -10,40 +10,94 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('albums', '0001_initial'),
-        ('tracks', '0001_initial'),
+        ("albums", "0001_initial"),
+        ("tracks", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='AlbumRanking',
+            name="AlbumRanking",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('position', models.PositiveSmallIntegerField(verbose_name='Posição no Ranking')),
-                ('album', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='user_rankings', to='albums.album', verbose_name='Álbum')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='album_rankings', to=settings.AUTH_USER_MODEL, verbose_name='Usuário')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "position",
+                    models.PositiveSmallIntegerField(verbose_name="Posição no Ranking"),
+                ),
+                (
+                    "album",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="user_rankings",
+                        to="albums.album",
+                        verbose_name="Álbum",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="album_rankings",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Usuário",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Ranking de Álbum',
-                'verbose_name_plural': 'Rankings de Álbuns',
-                'ordering': ['user', 'position'],
-                'unique_together': {('user', 'album'), ('user', 'position')},
+                "verbose_name": "Ranking de Álbum",
+                "verbose_name_plural": "Rankings de Álbuns",
+                "ordering": ["user", "position"],
+                "unique_together": {("user", "album"), ("user", "position")},
             },
         ),
         migrations.CreateModel(
-            name='TrackRanking',
+            name="TrackRanking",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('position', models.PositiveSmallIntegerField(verbose_name='Posição no Ranking')),
-                ('track', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='user_rankings', to='tracks.track', verbose_name='Música')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='track_rankings', to=settings.AUTH_USER_MODEL, verbose_name='Usuário')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "position",
+                    models.PositiveSmallIntegerField(verbose_name="Posição no Ranking"),
+                ),
+                (
+                    "track",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="user_rankings",
+                        to="tracks.track",
+                        verbose_name="Música",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="track_rankings",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Usuário",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Ranking de Música',
-                'verbose_name_plural': 'Rankings de Músicas',
-                'ordering': ['user', 'position'],
-                'unique_together': {('user', 'track')},
+                "verbose_name": "Ranking de Música",
+                "verbose_name_plural": "Rankings de Músicas",
+                "ordering": ["user", "position"],
+                "unique_together": {("user", "track")},
             },
         ),
     ]

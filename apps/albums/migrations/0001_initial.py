@@ -7,22 +7,42 @@ class Migration(migrations.Migration):
 
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
-            name='Album',
+            name="Album",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('title', models.CharField(max_length=150, unique=True, verbose_name='Título do Álbum')),
-                ('release_date', models.DateField(verbose_name='Data de Lançamento')),
-                ('cover_image_url', models.URLField(blank=True, max_length=500, null=True, verbose_name='URL da Capa')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "title",
+                    models.CharField(
+                        max_length=150, unique=True, verbose_name="Título do Álbum"
+                    ),
+                ),
+                ("release_date", models.DateField(verbose_name="Data de Lançamento")),
+                (
+                    "cover_image_url",
+                    models.URLField(
+                        blank=True,
+                        max_length=500,
+                        null=True,
+                        verbose_name="URL da Capa",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Álbum',
-                'verbose_name_plural': 'Álbuns',
-                'ordering': ['release_date'],
+                "verbose_name": "Álbum",
+                "verbose_name_plural": "Álbuns",
+                "ordering": ["release_date"],
             },
         ),
     ]

@@ -3,26 +3,27 @@ from datetime import date
 from apps.albums.models import Album
 from django.db.utils import IntegrityError
 
+
 @pytest.mark.django_db
 class TestAlbumModel:
-    
+
     @pytest.fixture
     def setup_album(self):
         """Fixture para criar um álbum padrão."""
         return Album.objects.create(
             title="Fearless (Taylor's Version)",
             release_date=date(2021, 4, 9),
-            cover_image_url="http://example.com/fearless.jpg"
+            cover_image_url="http://example.com/fearless.jpg",
         )
-        
+
     def test_album_creation_success(self, setup_album):
         """Teste Unitário: Verifica a criação bem-sucedida de um Álbum."""
         album = setup_album
-        
+
         assert album.title == "Fearless (Taylor's Version)"
         assert album.release_date == date(2021, 4, 9)
         assert album.cover_image_url == "http://example.com/fearless.jpg"
-        
+
         assert Album.objects.count() == 1
 
     def test_album_str_representation(self, setup_album):
@@ -32,37 +33,32 @@ class TestAlbumModel:
 
     def test_album_unique_title_constraint(self, setup_album):
         """Teste Unitário: Garante que títulos duplicados não são permitidos."""
-        
+
         with pytest.raises(IntegrityError):
             Album.objects.create(
-                title="Fearless (Taylor's Version)", 
-                release_date=date(2022, 1, 1)
+                title="Fearless (Taylor's Version)", release_date=date(2022, 1, 1)
             )
 
     def test_album_ordering_meta(self):
         """Teste Unitário: Verifica se a ordenação Meta está funcionando (pela data)."""
-        
+
         Album.objects.create(
-            title="1989 (Taylor's Version)",
-            release_date=date(2023, 10, 27)
+            title="1989 (Taylor's Version)", release_date=date(2023, 10, 27)
         )
         Album.objects.create(
-            title="Red (Taylor's Version)",
-            release_date=date(2021, 11, 12)
+            title="Red (Taylor's Version)", release_date=date(2021, 11, 12)
         )
-        
+
         ordered_albums = Album.objects.all()
-        
+
         assert ordered_albums[0].title == "Red (Taylor's Version)"
         assert ordered_albums[1].title == "1989 (Taylor's Version)"
 
     def test_cover_image_url_can_be_null(self):
         """Teste Unitário: Garante que o campo URL pode ser nulo/vazio."""
-        
+
         album = Album.objects.create(
-            title="Debut",
-            release_date=date(2006, 10, 24),
-            cover_image_url=None 
+            title="Debut", release_date=date(2006, 10, 24), cover_image_url=None
         )
-        
+
         assert album.cover_image_url is None

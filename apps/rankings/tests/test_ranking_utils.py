@@ -3,13 +3,17 @@ from django.utils import timezone
 from django.db import models
 from apps.users.models import User
 from apps.albums.models import Album
-from apps.rankings.models import AlbumRanking, TrackRanking, CountryGlobalRanking, GroupRanking, UserRanking
-from apps.rankings.utils import calculate_album_compatibility, calculate_global_ranking, calculate_group_internal_coherence
-from collections import defaultdict
+from apps.rankings.models import (
+    AlbumRanking,
+    GroupRanking,
+)
+from apps.rankings.utils import (
+    calculate_album_compatibility,
+    calculate_group_internal_coherence,
+)
 from apps.tracks.models import Track
 from django.test import TestCase
 from apps.social.models import Group
-
 
 
 @pytest.mark.django_db
@@ -42,8 +46,11 @@ class TestAlbumCompatibility:
             if name in kwargs:
                 continue
 
-            has_default = getattr(f, 'default', models.fields.NOT_PROVIDED) is not models.fields.NOT_PROVIDED
-            if has_default or getattr(f, 'null', False) or getattr(f, 'blank', False):
+            has_default = (
+                getattr(f, "default", models.fields.NOT_PROVIDED)
+                is not models.fields.NOT_PROVIDED
+            )
+            if has_default or getattr(f, "null", False) or getattr(f, "blank", False):
                 continue
 
             internal = f.get_internal_type()
@@ -53,7 +60,12 @@ class TestAlbumCompatibility:
             if internal == "URLField":
                 kwargs[name] = "http://example.com/cover.jpg"
                 continue
-            if internal in ("IntegerField", "BigIntegerField", "SmallIntegerField", "PositiveIntegerField"):
+            if internal in (
+                "IntegerField",
+                "BigIntegerField",
+                "SmallIntegerField",
+                "PositiveIntegerField",
+            ):
                 kwargs[name] = 1
                 continue
             if internal == "BooleanField":
@@ -160,7 +172,7 @@ class TestGlobalRanking:
         return Album.objects.create(
             title=f"{label}-title",
             cover_image_url=f"http://example.com/{label}.jpg",
-            release_date=timezone.now()
+            release_date=timezone.now(),
         )
 
     def _make_track(self, album, label="t", track_number=None):
@@ -168,9 +180,7 @@ class TestGlobalRanking:
             existing_count = Track.objects.filter(album=album).count()
             track_number = existing_count + 1
         return Track.objects.create(
-            title=f"{label}-title",
-            album=album,
-            track_number=track_number
+            title=f"{label}-title", album=album, track_number=track_number
         )
 
 
@@ -180,8 +190,7 @@ class TestGroupInternalCoherence(TestCase):
 
     def _make_album(self, title="A"):
         return Album.objects.create(
-            title=f"{title}-title",
-            release_date=timezone.now().date()
+            title=f"{title}-title", release_date=timezone.now().date()
         )
 
     def _make_group(self, name="G", owner: User = None):

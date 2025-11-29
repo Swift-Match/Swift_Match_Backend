@@ -16,49 +16,130 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Group',
+            name="Group",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=100, unique=True, verbose_name='Nome do Grupo')),
-                ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
-                ('owner', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='owned_groups', to=settings.AUTH_USER_MODEL, verbose_name='Criador')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        max_length=100, unique=True, verbose_name="Nome do Grupo"
+                    ),
+                ),
+                ("created_at", models.DateTimeField(default=django.utils.timezone.now)),
+                (
+                    "owner",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="owned_groups",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Criador",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Grupo',
-                'verbose_name_plural': 'Grupos',
+                "verbose_name": "Grupo",
+                "verbose_name_plural": "Grupos",
             },
         ),
         migrations.CreateModel(
-            name='GroupMembership',
+            name="GroupMembership",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('is_admin', models.BooleanField(default=False)),
-                ('joined_at', models.DateTimeField(default=django.utils.timezone.now)),
-                ('group', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='social.group')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("is_admin", models.BooleanField(default=False)),
+                ("joined_at", models.DateTimeField(default=django.utils.timezone.now)),
+                (
+                    "group",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, to="social.group"
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('user', 'group')},
+                "unique_together": {("user", "group")},
             },
         ),
         migrations.AddField(
-            model_name='group',
-            name='members',
-            field=models.ManyToManyField(related_name='group_memberships', through='social.GroupMembership', to=settings.AUTH_USER_MODEL, verbose_name='Membros'),
+            model_name="group",
+            name="members",
+            field=models.ManyToManyField(
+                related_name="group_memberships",
+                through="social.GroupMembership",
+                to=settings.AUTH_USER_MODEL,
+                verbose_name="Membros",
+            ),
         ),
         migrations.CreateModel(
-            name='Friendship',
+            name="Friendship",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('status', models.CharField(choices=[('pending', 'Pendente'), ('accepted', 'Aceita'), ('rejected', 'Rejeitada')], default='pending', max_length=10, verbose_name='Status')),
-                ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
-                ('from_user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='friendship_requests_sent', to=settings.AUTH_USER_MODEL, verbose_name='De')),
-                ('to_user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='friendship_requests_received', to=settings.AUTH_USER_MODEL, verbose_name='Para')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Pendente"),
+                            ("accepted", "Aceita"),
+                            ("rejected", "Rejeitada"),
+                        ],
+                        default="pending",
+                        max_length=10,
+                        verbose_name="Status",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(default=django.utils.timezone.now)),
+                (
+                    "from_user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="friendship_requests_sent",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="De",
+                    ),
+                ),
+                (
+                    "to_user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="friendship_requests_received",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Para",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Amizade',
-                'verbose_name_plural': 'Amizades',
-                'unique_together': {('from_user', 'to_user')},
+                "verbose_name": "Amizade",
+                "verbose_name_plural": "Amizades",
+                "unique_together": {("from_user", "to_user")},
             },
         ),
     ]
